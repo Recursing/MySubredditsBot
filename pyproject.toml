@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "mysubredditsbot"
+version = "0.1.0"
+description = ""
+authors = ["Recursing <buonanno.lorenzo@gmail.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.7"
+aiogram = "^2.2"
+httpx = "^0.6.8"
+
+[tool.poetry.dev-dependencies]
+bandit = "^1.6"
+black = {version = "^18.3-alpha.0", allows-prereleases = true}
+[build-system]
+requires = ["poetry>=0.12"]
+build-backend = "poetry.masonry.api"
