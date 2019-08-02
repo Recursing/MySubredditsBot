@@ -62,6 +62,7 @@ def unsubscribe(chat_id: int, subreddit: str):
         "DELETE FROM subscriptions WHERE chat_id=? AND subreddit=?",
         (chat_id, subreddit),
     )
+    return bool(c.rowcount)
 
 
 def update_threshold(
