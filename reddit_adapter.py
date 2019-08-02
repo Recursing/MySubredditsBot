@@ -8,6 +8,7 @@ client = httpx.AsyncClient()
 
 
 def format_time_delta(delta_seconds: int) -> str:
+    delta_seconds = int(delta_seconds)
     hours = delta_seconds // 3600
     minutes = (delta_seconds % 3600) // 60
     seconds = delta_seconds % 60
@@ -27,7 +28,7 @@ def formatted_post(post: Dict) -> str:
 
     title = post["title"].replace("<", "&lt;").replace(">", "&gt;")
     permalink = post["permalink"]
-    time_ago = format_time_delta(int(datetime.now().timestamp()) - post["created_utc"])
+    time_ago = format_time_delta(datetime.now().timestamp()- post["created_utc"])
     comment_number = post["num_comments"]
     if post["over_18"]:
         title += " - NSFW"
