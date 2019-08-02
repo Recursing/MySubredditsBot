@@ -41,7 +41,7 @@ async def add_subscriptions(chat_id: int, subs: List[str]):
         else:
             await bot.send_message(chat_id, "Cannot find {} subreddit".format(sub))
     await list_subscriptions(chat_id)
-    for sub in subscriptions_manager.user_subscriptions(chat_id):
+    for sub, _th, _pm in subscriptions_manager.user_subscriptions(chat_id):
         await send_subreddit_updates(sub)
 
 
@@ -74,7 +74,7 @@ async def remove_subscriptions(chat_id: int, subs: List[str]):
     for sub in subs:
         if not subscriptions_manager.unsubscribe(chat_id, sub):
             await bot.send_message(chat_id, "You are not subscribed to {}".format(sub))
-    list_subscriptions(chat_id)
+    await list_subscriptions(chat_id)
 
 
 @dp.message_handler(commands=["remove"])
@@ -85,7 +85,7 @@ async def handle_remove(message: dict):
     chat_id = message["chat"]["id"]
     text = message["text"].strip().lower()
     if len(text.split()) > 1:
-        remove_subscriptions(chat_id, text.split()[1:])
+        await remove_subscriptions(chat_id, text.split()[1:])
     else:
 
         async def remove_reply_handler(message):
