@@ -4,7 +4,6 @@ import urllib.parse
 from typing import List, Dict
 from datetime import datetime
 
-client = httpx.AsyncClient()
 
 
 def format_time_delta(delta_seconds: int) -> str:
@@ -56,6 +55,7 @@ class SubredditEmpty(Exception):
 
 
 async def get_posts_from_endpoint(endpoint: str) -> List[Dict]:
+    client = httpx.AsyncClient()
     r = await client.get(endpoint)
     r_json = r.json()
     if "data" in r_json:
