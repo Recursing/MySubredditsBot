@@ -1,9 +1,9 @@
 import re
 import httpx
+import json
 import urllib.parse
 from typing import List, Dict
 from datetime import datetime
-
 
 
 def format_time_delta(delta_seconds: int) -> str:
@@ -27,7 +27,7 @@ def formatted_post(post: Dict) -> str:
 
     title = post["title"].replace("<", "&lt;").replace(">", "&gt;")
     permalink = post["permalink"]
-    time_ago = format_time_delta(datetime.now().timestamp()- post["created_utc"])
+    time_ago = format_time_delta(datetime.now().timestamp() - post["created_utc"])
     comment_number = post["num_comments"]
     if post["over_18"]:
         title += " - NSFW"
@@ -54,10 +54,17 @@ class SubredditEmpty(Exception):
     pass
 
 
+class InvalidAnswerFromEndpoint(Exception):
+    pass
+
+
 async def get_posts_from_endpoint(endpoint: str) -> List[Dict]:
     client = httpx.AsyncClient()
     r = await client.get(endpoint)
-    r_json = r.json()
+    try:
+        r_json = r.json()
+    except json.decoder.JSONDecodeError:
+        raise InvalidAnswerFromEndpoint(f"{endpoint} return invalid json:\n{r.text}")
     if "data" in r_json:
         posts = [p["data"] for p in r_json["data"]["children"] if p["kind"] == "t3"]
         if posts:
@@ -67,7 +74,7 @@ async def get_posts_from_endpoint(endpoint: str) -> List[Dict]:
     elif "error" in r_json:
         if r_json["reason"] == "banned":
             raise SubredditBanned()
-    raise Exception(repr(r_json))
+    raise Exception(f"{r_json}")
 
 
 async def new_posts(subreddit: str, limit: int = 15) -> List[Dict]:

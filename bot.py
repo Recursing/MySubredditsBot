@@ -255,7 +255,10 @@ async def send_post(chat_id: int, post):
 async def send_subreddit_updates(subreddit: str):
     subscriptions = list(subscriptions_manager.sub_followers(subreddit))
     try:
-        post_iterator = await reddit_adapter.top_day_posts(subreddit)
+        try:
+            post_iterator = await reddit_adapter.top_day_posts(subreddit)
+        except reddit_adapter.SubredditEmpty:  # No posts today
+            post_iterator = []
         if any(threshold <= 50 for chat_id, threshold in subscriptions):
             post_iterator += await reddit_adapter.new_posts(subreddit)
         for post in post_iterator:
