@@ -23,25 +23,36 @@ bot = Bot(credentials.BOT_API_KEY)  # commands=list(commands.keys()))
 dp = Dispatcher(bot)
 
 
+async def add_subscription(chat_id: int, sub: str) -> bool:
+    if not reddit_adapter.valid_subreddit(sub):
+        await bot.send_message(chat_id, "{} is not a valid subreddit name".format(sub))
+        return False
+    try:
+        await reddit_adapter.check_subreddit(sub)
+    except reddit_adapter.SubredditEmpty:
+        await bot.send_message(chat_id, f"r/{sub} does not exist or is empty")
+        return False
+    except reddit_adapter.SubredditBanned:
+        await bot.send_message(chat_id, f"r/{sub} has been banned")
+        return False
+    except reddit_adapter.SubredditPrivate:
+        await bot.send_message(chat_id, f"r/{sub} is private")
+        return False
+    monthly_rank = 31
+    threshold = await reddit_adapter.get_threshold(sub, monthly_rank)
+    if not subscriptions_manager.subscribe(chat_id, sub, threshold, monthly_rank):
+        await bot.send_message(chat_id, f"You are already subscribed to {sub}")
+        return False
+    return True
+
+
 async def add_subscriptions(chat_id: int, subs: List[str]):
+    new_subs = []
     for sub in subs:
-        if not reddit_adapter.valid_subreddit(sub):
-            await bot.send_message(
-                chat_id, "{} is not a valid subreddit name".format(sub)
-            )
-        elif await reddit_adapter.check_exists(sub):
-            monthly_rank = 31
-            threshold = await reddit_adapter.get_threshold(sub, monthly_rank)
-            if not subscriptions_manager.subscribe(
-                chat_id, sub, threshold, monthly_rank
-            ):
-                await bot.send_message(
-                    chat_id, "You are already subscribed to {}".format(sub)
-                )
-        else:
-            await bot.send_message(chat_id, "Cannot find {} subreddit".format(sub))
+        if add_subscription(chat_id, sub):
+            new_subs.append(sub)
     await list_subscriptions(chat_id)
-    for sub, _th, _pm in subscriptions_manager.user_subscriptions(chat_id):
+    for sub in new_subs:
         await send_subreddit_updates(sub)
 
 

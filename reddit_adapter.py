@@ -50,6 +50,10 @@ class SubredditBanned(Exception):
     pass
 
 
+class SubredditPrivate(Exception):
+    pass
+
+
 class SubredditEmpty(Exception):
     pass
 
@@ -74,6 +78,8 @@ async def get_posts_from_endpoint(endpoint: str) -> List[Dict]:
     elif "error" in r_json:
         if r_json["reason"] == "banned":
             raise SubredditBanned()
+        if r_json["reason"] == "private":
+            raise SubredditPrivate()
     raise Exception(f"{r_json}")
 
 
@@ -99,11 +105,8 @@ async def get_threshold(subreddit: str, monthly_rank: int = 50) -> int:
     return posts[-1]["score"]
 
 
-async def check_exists(subreddit: str):
-    if not valid_subreddit(subreddit):
-        return False
+async def check_subreddit(subreddit: str):
     await new_posts(subreddit)
-    return True
 
 
 def valid_subreddit(text: str):
