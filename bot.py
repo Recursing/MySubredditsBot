@@ -49,7 +49,7 @@ async def add_subscription(chat_id: int, sub: str) -> bool:
 async def add_subscriptions(chat_id: int, subs: List[str]):
     new_subs = []
     for sub in subs:
-        if add_subscription(chat_id, sub):
+        if await add_subscription(chat_id, sub):
             new_subs.append(sub)
     await list_subscriptions(chat_id)
     for sub in new_subs:
