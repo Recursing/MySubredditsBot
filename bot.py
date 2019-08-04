@@ -172,9 +172,9 @@ async def change_threshold(chat_id: int, subreddit: str, factor: float):
         chat_id, subreddit, new_threshold, new_monthly
     )
     message_text = (
-        "You will now receive on average about {new_monthly / 31:.2f} "
-        "messages per day from {subreddit}, "
-        "minimum score: {new_threshold}"
+        f"You will now receive on average about {new_monthly / 31:.2f} "
+        f"messages per day from {subreddit}, "
+        f"minimum score: {new_threshold}"
     )
     await bot.send_message(chat_id, message_text)
 
