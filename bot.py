@@ -97,8 +97,8 @@ async def handle_add(message: types.message):
             chat_id, text.replace(",", " ").replace("+", " ").split()[1:]
         )
     else:
-        StateMachine.asked_add.set()
-        message.reply("What would you like to subscribe to?")
+        await StateMachine.asked_add.set()
+        await message.reply("What would you like to subscribe to?")
 
 
 async def remove_subscriptions(chat_id: int, subs: List[str]):
@@ -132,14 +132,14 @@ async def handle_remove(message: types.message):
                 "You are not subscribed to any subreddit, press /add to subscribe"
             )
         else:
-            StateMachine.asked_remove.set()
+            await StateMachine.asked_remove.set()
             markup = types.ReplyKeyboardMarkup(
                 resize_keyboard=True, selective=True, one_time_keyboard=True
             )
             for row in chunks(subreddits):
                 markup.add(row)
             markup.add("/cancel")
-            message.reply(
+            await message.reply(
                 "Which subreddit would you like to unsubscribe from?",
                 reply_markup=markup,
             )
@@ -206,9 +206,9 @@ async def handle_change_threshold(message: types.message, factor: float):
             )
         else:
             if factor > 1:
-                StateMachine.asked_more.set()
+                await StateMachine.asked_more.set()
             else:
-                StateMachine.asked_less.set()
+                await StateMachine.asked_less.set()
             markup = types.ReplyKeyboardMarkup(
                 resize_keyboard=True, selective=True, one_time_keyboard=True
             )
