@@ -82,7 +82,7 @@ async def add_subscriptions(chat_id: int, subs: List[str]):
 async def add_reply_handler(message: types.message, state):
     subs = message.text.lower().replace(",", " ").replace("+", " ").split()
     await add_subscriptions(message.chat.id, subs)
-    state.finish()
+    await state.finish()
 
 
 @dp.message_handler(commands=["add"])
@@ -112,7 +112,7 @@ async def remove_subscriptions(chat_id: int, subs: List[str]):
 @dp.message_handler(state=StateMachine.asked_remove)
 async def remove_reply_handler(message: types.message, state):
     await remove_subscriptions(message.chat.id, message["text"].lower().split())
-    state.finish()
+    await state.finish()
 
 
 @dp.message_handler(commands=["remove"])
@@ -180,13 +180,13 @@ async def change_threshold(chat_id: int, subreddit: str, factor: float):
 @dp.message_handler(state=StateMachine.asked_less)
 async def asked_less_handler(message: types.message, state):
     await change_threshold(message.chat.id, message["text"].lower(), factor=1 / 1.5)
-    state.finish()
+    await state.finish()
 
 
 @dp.message_handler(state=StateMachine.asked_more)
 async def asked_more_handler(message: types.message, state):
     await change_threshold(message.chat.id, message["text"].lower(), factor=1.5)
-    state.finish()
+    await state.finish()
 
 
 async def handle_change_threshold(message: types.message, factor: float):
@@ -249,7 +249,9 @@ async def list_subscriptions(chat_id: int):
             for sub, th, per_month in subscriptions
         )
         await bot.send_message(
-            chat_id, "You are curently subscribed to:\n{}".format(text_list)
+            chat_id,
+            "You are curently subscribed to:\n{}".format(text_list),
+            reply_markup=types.ReplyKeyboardRemove(),
         )
     else:
         await bot.send_message(
