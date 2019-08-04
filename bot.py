@@ -171,10 +171,12 @@ async def change_threshold(chat_id: int, subreddit: str, factor: float):
     subscriptions_manager.update_threshold(
         chat_id, subreddit, new_threshold, new_monthly
     )
-    template = "You will now receive on average about {} messages per day from {}"
-    await bot.send_message(
-        chat_id, template.format(round(new_monthly / 32, 2), subreddit)
+    message_text = (
+        "You will now receive on average about {new_monthly / 31:.2f} "
+        "messages per day from {subreddit}, "
+        "minimum score: {new_threshold}"
     )
+    await bot.send_message(chat_id, message_text)
 
 
 @dp.message_handler(state=StateMachine.asked_less)
@@ -245,12 +247,13 @@ async def list_subscriptions(chat_id: int):
     subscriptions = list(subscriptions_manager.user_subscriptions(chat_id))
     if subscriptions:
         text_list = "\n".join(
-            f"{sub}, about {per_month/31:.2f} per day, >{th} upvotes"
+            f"`{sub}`, about {per_month/31:.2f} per day, > {th} upvotes"
             for sub, th, per_month in subscriptions
         )
         await bot.send_message(
             chat_id,
             "You are curently subscribed to:\n{}".format(text_list),
+            parse_mode="Markdown",
             reply_markup=types.ReplyKeyboardRemove(),
         )
     else:
