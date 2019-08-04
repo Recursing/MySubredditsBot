@@ -63,8 +63,9 @@ class InvalidAnswerFromEndpoint(Exception):
 
 
 async def get_posts_from_endpoint(endpoint: str) -> List[Dict]:
+    headers = {"user-agent": "my-subreddits-bot-0.1"}
     client = httpx.AsyncClient()
-    r = await client.get(endpoint)
+    r = await client.get(endpoint, headers=headers)
     try:
         r_json = r.json()
     except json.decoder.JSONDecodeError:

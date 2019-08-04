@@ -255,11 +255,11 @@ async def list_subscriptions(chat_id: int):
             if per_month > 31:
                 return f"{per_month/31:.2f} per day"
             elif per_month == 31:
-                return f"one per day"
+                return f"one every day"
             return f"one every {31/per_month:.2f} days"
 
-        text_list = "\n".join(
-            f"`{sub}`, about {format_period(per_month)}, > {th} upvotes"
+        text_list = "\n\n".join(
+            f"*{sub}*, about {format_period(per_month)}, > {th} upvotes"
             for sub, th, per_month in subscriptions
         )
         await bot.send_message(
@@ -326,17 +326,17 @@ async def send_subreddit_updates(subreddit: str):
             post_iterator = await reddit_adapter.top_day_posts(subreddit)
         except reddit_adapter.SubredditEmpty:  # No posts today
             post_iterator = []
-        if any(threshold <= 50 for chat_id, threshold in subscriptions):
+        if any(threshold <= 50 for chat_id, threshold, _pm in subscriptions):
             post_iterator += await reddit_adapter.new_posts(subreddit)
         for post in post_iterator:
             # cur_timestamp = datetime.now().timestamp()
             # subscriptions_manager.store_post(post.id, post.title, post.score,
             #                                 post.created_utc, cur_timestamp, subreddit)
-            for chat_id, threshold in subscriptions:
+            for chat_id, threshold, _pm in subscriptions:
                 if post["score"] > threshold:
                     await send_post(chat_id, post)
     except reddit_adapter.SubredditBanned:
-        for chat_id, _threshold in subscriptions + [(credentials.ADMIN_ID, 0)]:
+        for chat_id, _threshold, _pm in subscriptions + [(credentials.ADMIN_ID, 0)]:
             if not subscriptions_manager.already_sent_exception(
                 chat_id, subreddit, "banned"
             ):
@@ -346,7 +346,7 @@ async def send_subreddit_updates(subreddit: str):
                 )
             subscriptions_manager.unsubscribe(chat_id, subreddit)
     except reddit_adapter.SubredditPrivate:
-        for chat_id, _threshold in subscriptions + [(credentials.ADMIN_ID, 0)]:
+        for chat_id, _threshold, _pm in subscriptions + [(credentials.ADMIN_ID, 0, 0)]:
             if not subscriptions_manager.already_sent_exception(
                 chat_id, subreddit, "private"
             ):
@@ -403,51 +403,72 @@ async def help_message(message: dict):
     )
 
 
-async def send_updates_loop(refresh_period=15 * 60):
-    while True:
-        subreddits = subscriptions_manager.all_subreddits()
-        if len(subreddits) == 0:
-            await asyncio.sleep(10)
-        for subreddit in subreddits:
-            sleep_time = refresh_period / len(subreddits)
-            print(f"Tracking {len(subreddits)} sleeping for {sleep_time}")
-            await asyncio.sleep(sleep_time)
-            try:
-                print(f"Sending updates for subreddit {subreddit}")
-                await send_subreddit_updates(subreddit)
-            except Exception as e:
-                await log_exception(e, f"Exception while sending {subreddit}")
+async def send_updates(refresh_period=15 * 60):
+    subreddits = subscriptions_manager.all_subreddits()
+    if len(subreddits) == 0:
+        await asyncio.sleep(10)
+    for subreddit in subreddits:
+        sleep_time = refresh_period / len(subreddits)
+        print(f"Tracking {len(subreddits)} sleeping for {sleep_time}")
+        await asyncio.sleep(sleep_time)
+        try:
+            print(f"Sending updates for subreddit {subreddit}")
+            await send_subreddit_updates(subreddit)
+        except Exception as e:
+            await log_exception(e, f"Exception while sending {subreddit}")
 
-        logger.info("Sent updates")
+    logger.info("Sent updates")
 
 
-async def check_exceptions_loop(refresh_period=24 * 60 * 60):
+async def check_exceptions(refresh_period=24 * 60 * 60):
     """
         Check whether private or banned subs are now available
     """
-    while True:
-        unavailable_subs = subscriptions_manager.unavailable_subreddits()
-        try:
-            for sub in unavailable_subs:
-                try:
-                    reddit_adapter.new_posts(sub)
-                except (
-                    reddit_adapter.SubredditPrivate,
-                    reddit_adapter.SubredditBanned,
-                ):
-                    continue
-                old_subscribers = subscriptions_manager.get_old_subscribers(sub)
-                for chat_id in old_subscribers:
-                    await add_subscription(chat_id, sub)
-                    await bot.send_message(chat_id, f"{sub} is now available again")
-        except Exception as e:
-            await log_exception(e, f"Exception while checking unavailability of {sub}")
+    unavailable_subs = subscriptions_manager.unavailable_subreddits()
+    try:
+        for sub in unavailable_subs:
+            try:
+                reddit_adapter.new_posts(sub)
+            except (reddit_adapter.SubredditPrivate, reddit_adapter.SubredditBanned):
+                continue
+            old_subscribers = subscriptions_manager.get_old_subscribers(sub)
+            for chat_id in old_subscribers:
+                await add_subscription(chat_id, sub)
+                await bot.send_message(chat_id, f"{sub} is now available again")
+    except Exception as e:
+        await log_exception(e, f"Exception while checking unavailability of {sub}")
+    await asyncio.sleep(refresh_period)
+
+
+async def update_thresholds(refresh_period=36 * 60 * 60):
+    """
+        Update all upvote thresholds based on monthly number
+    """
+    subreddits = subscriptions_manager.all_subreddits()
+    if len(subreddits) == 0:
         await asyncio.sleep(refresh_period)
+    for subreddit in subreddits:
+        for chat_id, old_threshold, per_month in subscriptions_manager.sub_followers(
+            subreddit
+        ):
+            new_threshold = await reddit_adapter.get_threshold(subreddit, per_month)
+            if new_threshold != old_threshold:
+                subscriptions_manager.update_threshold(
+                    chat_id, subreddit, new_threshold, per_month
+                )
+            await asyncio.sleep(2)
+    await asyncio.sleep(refresh_period)
+
+
+async def loop_forever(fun):
+    while True:
+        await fun()
 
 
 async def on_startup(dp):
-    asyncio.create_task(send_updates_loop())
-    asyncio.create_task(check_exceptions_loop())
+    asyncio.create_task(loop_forever(send_updates))
+    asyncio.create_task(loop_forever(check_exceptions))
+    asyncio.create_task(loop_forever(update_thresholds))
 
 
 def format_traceback(e: Exception):
