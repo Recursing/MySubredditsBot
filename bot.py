@@ -99,7 +99,11 @@ async def handle_add(message: types.message):
         )
     else:
         await StateMachine.asked_add.set()
-        await message.reply("What would you like to subscribe to?")
+        markup = types.ReplyKeyboardMarkup(
+            resize_keyboard=True, selective=True, one_time_keyboard=True
+        )
+        markup.add("/cancel")
+        await message.reply("What would you like to subscribe to?", markup)
 
 
 async def remove_subscriptions(chat_id: int, subs: List[str]):
@@ -224,7 +228,7 @@ async def handle_change_threshold(message: types.message, factor: float):
             )
             question = question_template.format("more" if factor > 1 else "less")
 
-            bot.send_message(chat_id, question, reply_markup=markup)
+            await bot.send_message(chat_id, question, reply_markup=markup)
 
 
 @dp.message_handler(commands=["moar", "more", "mo4r"])
@@ -246,8 +250,16 @@ async def handle_less(message: dict):
 async def list_subscriptions(chat_id: int):
     subscriptions = list(subscriptions_manager.user_subscriptions(chat_id))
     if subscriptions:
+
+        def format_period(per_month):
+            if per_month > 31:
+                return f"{per_month/31:.2f} per day"
+            elif per_month == 31:
+                return f"one per day"
+            return f"one every {31/per_month:.2f} days"
+
         text_list = "\n".join(
-            f"`{sub}`, about {per_month/31:.2f} per day, > {th} upvotes"
+            f"`{sub}`, about {format_period(per_month)}, > {th} upvotes"
             for sub, th, per_month in subscriptions
         )
         await bot.send_message(
