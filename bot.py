@@ -150,7 +150,9 @@ async def handle_remove(message: types.message):
             )
 
 
-async def change_threshold(chat_id: int, subreddit: str, factor: float):
+async def change_threshold(
+    chat_id: int, subreddit: str, factor: float, original_message=None
+):
     try:
         current_monthly = subscriptions_manager.get_per_month(chat_id, subreddit)
     except Exception as e:
@@ -179,7 +181,38 @@ async def change_threshold(chat_id: int, subreddit: str, factor: float):
         f"You will now receive on average about {format_period(new_monthly)} "
         f"from {subreddit}, minimum score: {new_threshold}"
     )
-    await bot.send_message(chat_id, message_text)
+    inline_keyboard = types.InlineKeyboardMarkup()
+    inline_keyboard.row(
+        types.InlineKeyboardButton("Less", callback_data=f"less|{subreddit}"),
+        types.InlineKeyboardButton("More", callback_data=f"more|{subreddit}"),
+    )
+    if original_message is None:
+        await bot.send_message(chat_id, message_text, reply_markup=inline_keyboard)
+    else:
+        await bot.edit_message_text(
+            text=message_text,
+            chat_id=original_message.chat.id,
+            message_id=original_message.message_id,
+            reply_markup=inline_keyboard,
+        )
+
+
+@dp.callback_query_handler(lambda cb: cb.data.startswith("less|"))
+async def inline_less_handler(query: types.CallbackQuery):
+    _less, subreddit = query.data.split("|")
+    await change_threshold(
+        query.message.chat.id, subreddit, factor=1 / 1.5, original_message=query.message
+    )
+    await query.answer()  # send answer to close the rounding circle
+
+
+@dp.callback_query_handler(lambda cb: cb.data.startswith("more|"))
+async def inline_more_handler(query: types.CallbackQuery):
+    await query.answer()  # send answer to close the rounding circle
+    _more, subreddit = query.data.split("|")
+    await change_threshold(
+        query.message.chat.id, subreddit, factor=1.5, original_message=query.message
+    )
 
 
 @dp.message_handler(state=StateMachine.asked_less)
