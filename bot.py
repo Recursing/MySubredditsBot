@@ -244,7 +244,7 @@ async def list_subscriptions(chat_id: int):
     subscriptions = list(subscriptions_manager.user_subscriptions(chat_id))
     if subscriptions:
         text_list = "\n".join(
-            "{sub}, about {per_month/31:.2f} per day, >{th} upvotes"
+            f"{sub}, about {per_month/31:.2f} per day, >{th} upvotes"
             for sub, th, per_month in subscriptions
         )
         await bot.send_message(
