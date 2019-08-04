@@ -44,6 +44,12 @@ async def cancel_handler(message: types.Message, state, raw_state=None):
     await message.reply("Canceled.", reply_markup=types.ReplyKeyboardRemove())
 
 
+@dp.callback_query_handler(lambda cb: cb.data.startswith("cancel"))
+async def inline_cancel_handler(query: types.CallbackQuery):
+    message = query.message
+    await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+
+
 async def add_subscription(chat_id: int, sub: str) -> bool:
     if not reddit_adapter.valid_subreddit(sub):
         await bot.send_message(chat_id, "{} is not a valid subreddit name".format(sub))
@@ -186,6 +192,7 @@ async def change_threshold(
         types.InlineKeyboardButton("Less", callback_data=f"less|{subreddit}"),
         types.InlineKeyboardButton("More", callback_data=f"more|{subreddit}"),
     )
+    inline_keyboard.add(types.InlineKeyboardButton("cancel", callback_data="cancel"))
     if original_message is None:
         await bot.send_message(chat_id, message_text, reply_markup=inline_keyboard)
     else:
