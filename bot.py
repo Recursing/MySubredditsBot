@@ -222,12 +222,10 @@ async def handle_change_threshold(message: types.message, factor: float):
                 markup.add(*row)
             markup.add("/cancel")
 
-            question_template = (
-                "From which subreddit would you like to recieve {} updates?"
-            )
-            question = question_template.format("more" if factor > 1 else "less")
+            question_template = "From which subreddit would you like to get {} updates?"
+            question = question_template.format("more" if factor > 1 else "fewer")
 
-            await bot.send_message(chat_id, question, reply_markup=markup)
+            await message.reply(question, reply_markup=markup)
 
 
 @dp.message_handler(commands=["moar", "more", "mo4r"])
@@ -269,6 +267,7 @@ async def list_subscriptions(chat_id: int):
             "You are currently subscribed to:\n\n{}".format(text_list),
             parse_mode="Markdown",
             reply_markup=types.ReplyKeyboardRemove(),
+            disable_web_page_preview=True,
         )
     else:
         await bot.send_message(
@@ -383,7 +382,8 @@ async def help_message(message: dict):
         "/help": help_message,
         "/add": handle_add,
         "/remove": handle_remove,
-        "/mo4r": handle_mo4r,
+        "/more": handle_mo4r,
+        "/less": handle_less,
         "/list": handle_list,
     }
 
@@ -407,6 +407,7 @@ async def help_message(message: dict):
 
 async def send_updates(refresh_period=15 * 60):
     subreddits = subscriptions_manager.all_subreddits()
+    subreddits.sort()
     if len(subreddits) == 0:
         await asyncio.sleep(10)
     for subreddit in subreddits:
