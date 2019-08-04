@@ -1,5 +1,5 @@
 import traceback
-from aiogram import Bot, Dispatcher, executor, types
+from aiogram import Bot, Dispatcher, executor, types, exceptions
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher.filters.state import State, StatesGroup
 import subscriptions_manager
@@ -289,8 +289,7 @@ async def send_post(chat_id: int, post):
         try:
             await bot.send_message(chat_id, formatted_post, parse_mode="HTML")
             subscriptions_manager.mark_as_sent(chat_id, post["id"])
-        except Exception as e:
-            await log_exception(e, f"Failed to send {formatted_post} to {chat_id}")
+        except exceptions.Unauthorized as e:
             unsub_reasons = [
                 "chat not found",
                 "bot was blocked by the user",
@@ -302,7 +301,11 @@ async def send_post(chat_id: int, post):
                 logger.warning("Unsubscribing user {}".format(chat_id))
                 for sub, th, pm in subscriptions_manager.user_subscriptions(chat_id):
                     subscriptions_manager.unsubscribe(chat_id, sub)
-            elif (
+            else:
+                await log_exception(e, f"Failed to send {formatted_post} to {chat_id}")
+        except Exception as e:
+            await log_exception(e, f"Failed to send {formatted_post} to {chat_id}")
+            if (
                 hasattr(e, "json")
                 and "group chat was upgraded to a supergroup chat"
                 in getattr(e, "json")["description"]
