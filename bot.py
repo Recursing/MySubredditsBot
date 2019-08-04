@@ -103,7 +103,7 @@ async def handle_add(message: types.message):
             resize_keyboard=True, selective=True, one_time_keyboard=True
         )
         markup.add("/cancel")
-        await message.reply("What would you like to subscribe to?", markup)
+        await message.reply("What would you like to subscribe to?", reply_markup=markup)
 
 
 async def remove_subscriptions(chat_id: int, subs: List[str]):
@@ -176,9 +176,8 @@ async def change_threshold(chat_id: int, subreddit: str, factor: float):
         chat_id, subreddit, new_threshold, new_monthly
     )
     message_text = (
-        f"You will now receive on average about {new_monthly / 31:.2f} "
-        f"messages per day from {subreddit}, "
-        f"minimum score: {new_threshold}"
+        f"You will now receive on average about {format_period(new_monthly)} "
+        f"from {subreddit}, minimum score: {new_threshold}"
     )
     await bot.send_message(chat_id, message_text)
 
@@ -239,6 +238,14 @@ async def handle_mo4r(message: dict):
     await handle_change_threshold(message, 1.5)
 
 
+def format_period(per_month):
+    if per_month > 31:
+        return f"{per_month/31:.2f} per day"
+    elif per_month == 31:
+        return f"one every day"
+    return f"one every {31/per_month:.2f} days"
+
+
 @dp.message_handler(commands=["less", "fewer"])
 async def handle_less(message: dict):
     """
@@ -250,21 +257,16 @@ async def handle_less(message: dict):
 async def list_subscriptions(chat_id: int):
     subscriptions = list(subscriptions_manager.user_subscriptions(chat_id))
     if subscriptions:
-
-        def format_period(per_month):
-            if per_month > 31:
-                return f"{per_month/31:.2f} per day"
-            elif per_month == 31:
-                return f"one every day"
-            return f"one every {31/per_month:.2f} days"
-
         text_list = "\n\n".join(
-            f"*{sub}*, about {format_period(per_month)}, > {th} upvotes"
+            (
+                f"[{sub}](https://www.reddit.com/r/{sub}), "
+                f"about {format_period(per_month)}, > {th} upvotes"
+            )
             for sub, th, per_month in subscriptions
         )
         await bot.send_message(
             chat_id,
-            "You are curently subscribed to:\n{}".format(text_list),
+            "You are currently subscribed to:\n\n{}".format(text_list),
             parse_mode="Markdown",
             reply_markup=types.ReplyKeyboardRemove(),
         )
