@@ -1,5 +1,6 @@
 import traceback
-from aiogram import Bot, Dispatcher, executor
+from aiogram import Bot, Dispatcher, executor, types
+from aiogram.dispatcher.filters.state import State, StatesGroup
 import subscriptions_manager
 import reddit_adapter
 import logging
@@ -21,6 +22,25 @@ logger = logging.getLogger(__name__)
 bot = Bot(credentials.BOT_API_KEY)  # commands=list(commands.keys()))
 # bot.start_handling(perm_handle)
 dp = Dispatcher(bot)
+
+
+class StateMachine(StatesGroup):
+    asked_remove = State()
+    asked_add = State()
+    asked_more = State()
+    asked_less = State()
+
+
+@dp.message_handler(state="*", commands=["cancel"])
+@dp.message_handler(lambda message: message.text.lower() == "cancel", state="*")
+async def cancel_handler(message: types.Message, state, raw_state=None):
+    """
+    Allow user to cancel any action
+    """
+    # Cancel state and inform user about it
+    await state.finish()
+    # And remove keyboard (just in case)
+    await message.reply("Canceled.", reply_markup=types.ReplyKeyboardRemove())
 
 
 async def add_subscription(chat_id: int, sub: str) -> bool:
@@ -57,8 +77,15 @@ async def add_subscriptions(chat_id: int, subs: List[str]):
             await send_subreddit_updates(sub)
 
 
+@dp.message_handler(state=StateMachine.asked_add)
+async def add_reply_handler(message: types.message, state):
+    subs = message.text.lower().replace(",", " ").replace("+", " ").split()
+    await add_subscriptions(message.chat.id, subs)
+    state.finish()
+
+
 @dp.message_handler(commands=["add"])
-async def handle_add(message: dict):
+async def handle_add(message: types.message):
     """
         Subscribe to new space/comma separated subreddits
     """
@@ -70,16 +97,8 @@ async def handle_add(message: dict):
             chat_id, text.replace(",", " ").replace("+", " ").split()[1:]
         )
     else:
-
-        async def add_reply_handler(message):
-            subs = message["text"].lower().replace(",", " ").replace("+", " ").split()
-            await add_subscriptions(chat_id, subs)
-
-        """bot.ask(
-            chat_id,
-            "What would you like to subscribe to?",
-            reply_handler=add_reply_handler,
-        )"""
+        StateMachine.asked_add.set()
+        message.reply("What would you like to subscribe to?")
 
 
 async def remove_subscriptions(chat_id: int, subs: List[str]):
@@ -89,8 +108,14 @@ async def remove_subscriptions(chat_id: int, subs: List[str]):
     await list_subscriptions(chat_id)
 
 
+@dp.message_handler(state=StateMachine.asked_remove)
+async def remove_reply_handler(message: types.message, state):
+    await remove_subscriptions(message.chat.id, message["text"].lower().split())
+    state.finish()
+
+
 @dp.message_handler(commands=["remove"])
-async def handle_remove(message: dict):
+async def handle_remove(message: types.message):
     """
         Unsubscribe from a subreddit
     """
@@ -99,25 +124,25 @@ async def handle_remove(message: dict):
     if len(text.split()) > 1:
         await remove_subscriptions(chat_id, text.split()[1:])
     else:
-
-        async def remove_reply_handler(message):
-            await remove_subscriptions(chat_id, message["text"].lower().split())
-
         user_thresholds = subscriptions_manager.user_thresholds(chat_id)
         subreddits = [subreddit for subreddit, threshold in user_thresholds]
         subreddits.sort()
         if not subreddits:
-            await bot.send_message(
-                chat_id,
-                "You are not subscribed to any subreddit, press /add to subscribe",
+            await message.reply(
+                "You are not subscribed to any subreddit, press /add to subscribe"
             )
-        """else:
-            bot.ask(
-                chat_id,
+        else:
+            StateMachine.asked_remove.set()
+            markup = types.ReplyKeyboardMarkup(
+                resize_keyboard=True, selective=True, one_time_keyboard=True
+            )
+            for row in chunks(subreddits):
+                markup.add(row)
+            markup.add("/cancel")
+            message.reply(
                 "Which subreddit would you like to unsubscribe from?",
-                reply_handler=remove_reply_handler,
-                possible_replies=subreddits,
-            )"""
+                reply_markup=markup,
+            )
 
 
 async def change_threshold(chat_id: int, subreddit: str, factor: float):
@@ -151,7 +176,19 @@ async def change_threshold(chat_id: int, subreddit: str, factor: float):
     )
 
 
-async def handle_change_threshold(message: dict, factor: float):
+@dp.message_handler(state=StateMachine.asked_less)
+async def asked_less_handler(message: types.message, state):
+    await change_threshold(message.chat.id, message["text"].lower(), factor=1 / 1.5)
+    state.finish()
+
+
+@dp.message_handler(state=StateMachine.asked_more)
+async def asked_more_handler(message: types.message, state):
+    await change_threshold(message.chat.id, message["text"].lower(), factor=1.5)
+    state.finish()
+
+
+async def handle_change_threshold(message: types.message, factor: float):
     """
         factor: new_monthly / current_monthly
     """
@@ -160,29 +197,31 @@ async def handle_change_threshold(message: dict, factor: float):
     if len(text.split()) > 1:
         await change_threshold(chat_id, text.split(None, 1)[1], factor=factor)
     else:
-
-        async def change_threshold_handler(message):
-            await change_threshold(chat_id, message["text"].lower(), factor=factor)
-
         user_thresholds = subscriptions_manager.user_thresholds(chat_id)
         subreddits = [subreddit for subreddit, threshold in user_thresholds]
         subreddits.sort()
         if not subreddits:
-            await bot.send_message(
-                chat_id,
-                "You are not subscribed to any subreddit, press /add to subscribe",
+            await message.reply(
+                "You are not subscribed to any subreddit, press /add to subscribe"
             )
-        """else:
+        else:
+            if factor > 1:
+                StateMachine.asked_more.set()
+            else:
+                StateMachine.asked_less.set()
+            markup = types.ReplyKeyboardMarkup(
+                resize_keyboard=True, selective=True, one_time_keyboard=True
+            )
+            for row in chunks(subreddits):
+                markup.add(row)
+            markup.add("/cancel")
+
             question_template = (
                 "From which subreddit would you like to recieve {} updates?"
             )
             question = question_template.format("more" if factor > 1 else "less")
-            bot.ask(
-                chat_id,
-                question,
-                reply_handler=change_threshold_handler,
-                possible_replies=subreddits,
-            )"""
+
+            bot.send_message(chat_id, question, reply_markup=markup)
 
 
 @dp.message_handler(commands=["moar", "more", "mo4r"])
@@ -205,10 +244,8 @@ async def list_subscriptions(chat_id: int):
     subscriptions = list(subscriptions_manager.user_subscriptions(chat_id))
     if subscriptions:
         text_list = "\n".join(
-            [
-                "{}, about {:.2f} per day".format(sub, per_month / 31)
-                for sub, th, per_month in subscriptions
-            ]
+            "{sub}, about {per_month/31:.2f} per day, >{th} upvotes"
+            for sub, th, per_month in subscriptions
         )
         await bot.send_message(
             chat_id, "You are curently subscribed to:\n{}".format(text_list)
@@ -306,24 +343,45 @@ async def send_subreddit_updates(subreddit: str):
         time.sleep(60 * 2)
 
 
+def chunks(sequence, chunk_size=2):
+    """
+        [1,2,3,4,5], 2 --> [[1,2],[3,4],[5]]
+    """
+    lsequence = list(sequence)
+    while lsequence:
+        size = min(len(lsequence), chunk_size)
+        yield lsequence[:size]
+        lsequence = lsequence[size:]
+
+
 @dp.message_handler(commands=["start", "help"])
 async def help_message(message: dict):
     """
         Send help message
     """
+    commands = {
+        "help": help_message,
+        "add": handle_add,
+        "remove": handle_remove,
+        "mo4r": handle_mo4r,
+        "list": handle_list,
+    }
+
     command_docs = "".join(
-        "/{}: {}".format(key, f.__doc__)
-        for key, f in {
-            "help": help_message,
-            "add": handle_add,
-            "remove": handle_remove,
-            "mo4r": handle_mo4r,
-            "list": handle_list,
-        }.items()
+        "/{}: {}".format(key, f.__doc__) for key, f in commands.items()
     )
+
+    markup = types.ReplyKeyboardMarkup(
+        resize_keyboard=True, selective=True, one_time_keyboard=True
+    )
+    command_list = list(commands.keys())
+    for row in chunks(command_list):
+        markup.add(*row)
+
     await bot.send_message(
         message["chat"]["id"],
         "Try the following commands: \n    {}".format(command_docs),
+        reply_markup=markup,
     )
 
 
