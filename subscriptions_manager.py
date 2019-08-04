@@ -101,7 +101,8 @@ def all_subreddits() -> List[str]:
 def sub_followers(subreddit: str):
     c = DB.cursor()
     c.execute(
-        "SELECT chat_id, threshold FROM subscriptions WHERE subreddit=?", (subreddit,)
+        "SELECT chat_id, threshold, per_month FROM subscriptions WHERE subreddit=?",
+        (subreddit,),
     )
     for row in c.fetchall():
         yield row
