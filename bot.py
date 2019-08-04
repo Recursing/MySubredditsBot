@@ -1,5 +1,6 @@
 import traceback
 from aiogram import Bot, Dispatcher, executor, types
+from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher.filters.state import State, StatesGroup
 import subscriptions_manager
 import reddit_adapter
@@ -21,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 bot = Bot(credentials.BOT_API_KEY)  # commands=list(commands.keys()))
 # bot.start_handling(perm_handle)
-dp = Dispatcher(bot)
+dp = Dispatcher(bot, storage=MemoryStorage())
 
 
 class StateMachine(StatesGroup):
@@ -137,7 +138,7 @@ async def handle_remove(message: types.message):
                 resize_keyboard=True, selective=True, one_time_keyboard=True
             )
             for row in chunks(subreddits):
-                markup.add(row)
+                markup.add(*row)
             markup.add("/cancel")
             await message.reply(
                 "Which subreddit would you like to unsubscribe from?",
@@ -213,7 +214,7 @@ async def handle_change_threshold(message: types.message, factor: float):
                 resize_keyboard=True, selective=True, one_time_keyboard=True
             )
             for row in chunks(subreddits):
-                markup.add(row)
+                markup.add(*row)
             markup.add("/cancel")
 
             question_template = (
@@ -360,15 +361,15 @@ async def help_message(message: dict):
         Send help message
     """
     commands = {
-        "help": help_message,
-        "add": handle_add,
-        "remove": handle_remove,
-        "mo4r": handle_mo4r,
-        "list": handle_list,
+        "/help": help_message,
+        "/add": handle_add,
+        "/remove": handle_remove,
+        "/mo4r": handle_mo4r,
+        "/list": handle_list,
     }
 
     command_docs = "".join(
-        "/{}: {}".format(key, f.__doc__) for key, f in commands.items()
+        "{}: {}".format(key, f.__doc__) for key, f in commands.items()
     )
 
     markup = types.ReplyKeyboardMarkup(
