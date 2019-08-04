@@ -51,9 +51,10 @@ async def add_subscriptions(chat_id: int, subs: List[str]):
     for sub in subs:
         if await add_subscription(chat_id, sub):
             new_subs.append(sub)
-    await list_subscriptions(chat_id)
-    for sub in new_subs:
-        await send_subreddit_updates(sub)
+    if new_subs:
+        await list_subscriptions(chat_id)
+        for sub in new_subs:
+            await send_subreddit_updates(sub)
 
 
 @dp.message_handler(commands=["add"])
@@ -279,6 +280,26 @@ async def send_subreddit_updates(subreddit: str):
             for chat_id, threshold in subscriptions:
                 if post["score"] > threshold:
                     await send_post(chat_id, post)
+    except reddit_adapter.SubredditBanned:
+        for chat_id, _threshold in subscriptions + [(credentials.ADMIN_ID, 0)]:
+            if not subscriptions_manager.already_sent_exception(
+                chat_id, subreddit, "banned"
+            ):
+                await bot.send_message(chat_id, f"r/{subreddit} has been banned")
+                subscriptions_manager.mark_exception_as_sent(
+                    chat_id, subreddit, "banned"
+                )
+            subscriptions_manager.unsubscribe(chat_id, subreddit)
+    except reddit_adapter.SubredditPrivate:
+        for chat_id, _threshold in subscriptions + [(credentials.ADMIN_ID, 0)]:
+            if not subscriptions_manager.already_sent_exception(
+                chat_id, subreddit, "private"
+            ):
+                await bot.send_message(chat_id, f"r/{subreddit} has been made private")
+                subscriptions_manager.mark_exception_as_sent(
+                    chat_id, subreddit, "private"
+                )
+            subscriptions_manager.unsubscribe(chat_id, subreddit)
 
     except Exception as e:
         await log_exception(e, f"send_subreddit_updates({subreddit})")
@@ -306,13 +327,13 @@ async def help_message(message: dict):
     )
 
 
-async def main_loop():
+async def send_updates_loop(refresh_period=15 * 60):
     while True:
         subreddits = subscriptions_manager.all_subreddits()
         if len(subreddits) == 0:
             await asyncio.sleep(10)
         for subreddit in subreddits:
-            sleep_time = 60 * 15 / len(subreddits)
+            sleep_time = refresh_period / len(subreddits)
             print(f"Tracking {len(subreddits)} sleeping for {sleep_time}")
             await asyncio.sleep(sleep_time)
             try:
@@ -321,11 +342,36 @@ async def main_loop():
             except Exception as e:
                 await log_exception(e, f"Exception while sending {subreddit}")
 
-    logger.info("Sent updates to everybody")
+        logger.info("Sent updates")
+
+
+async def check_exceptions_loop(refresh_period=24 * 60 * 60):
+    """
+        Check whether private or banned subs are now available
+    """
+    while True:
+        unavailable_subs = subscriptions_manager.unavailable_subreddits()
+        try:
+            for sub in unavailable_subs:
+                try:
+                    reddit_adapter.new_posts(sub)
+                except (
+                    reddit_adapter.SubredditPrivate,
+                    reddit_adapter.SubredditBanned,
+                ):
+                    continue
+                old_subscribers = subscriptions_manager.get_old_subscribers(sub)
+                for chat_id in old_subscribers:
+                    await add_subscription(chat_id, sub)
+                    await bot.send_message(chat_id, f"{sub} is now available again")
+        except Exception as e:
+            await log_exception(e, f"Exception while checking unavailability of {sub}")
+        await asyncio.sleep(refresh_period)
 
 
 async def on_startup(dp):
-    asyncio.create_task(main_loop())
+    asyncio.create_task(send_updates_loop())
+    asyncio.create_task(check_exceptions_loop())
 
 
 def format_traceback(e: Exception):
@@ -338,8 +384,8 @@ async def log_exception(e: Exception, message: str):
     formatted_traceback = format_traceback(e)
     logger.error(message, exc_info=True)
     logger.error(formatted_traceback)
-    await bot.send_message(80906134, message)
-    await bot.send_message(80906134, formatted_traceback)
+    await bot.send_message(credentials.ADMIN_ID, message)
+    await bot.send_message(credentials.ADMIN_ID, formatted_traceback)
 
 
 if __name__ == "__main__":

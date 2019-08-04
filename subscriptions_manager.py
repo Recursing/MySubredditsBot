@@ -25,6 +25,14 @@ def create_tables():
             PRIMARY KEY (chat_id, post_id)
         );"""
     )
+    c.execute(
+        """CREATE TABLE IF NOT EXISTS exceptions (
+            subreddit TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            chat_id INTEGER NOT NULL,
+            PRIMARY KEY (chat_id, subreddit, reason)
+        );"""
+    )
 
 
 create_tables()
@@ -148,3 +156,29 @@ def mark_as_sent(chat_id: int, post_id: str):
 
 def commit():
     DB.commit()
+
+
+def already_sent_exception(chat_id: int, subreddit: str, reason: str):
+    c = DB.cursor()
+    c.execute(
+        "SELECT * FROM exceptions WHERE chat_id=? AND subreddit=? AND reason=?",
+        (chat_id, subreddit, reason),
+    )
+    return bool(c.fetchone())
+
+
+def mark_exception_as_sent(chat_id: int, subreddit: str, reason: str):
+    c = DB.cursor()
+    c.execute("INSERT INTO exceptions VALUES (?,?,?)", (subreddit, reason, chat_id))
+
+
+def get_old_subscribers(subreddit: str):
+    c = DB.cursor()
+    c.execute("SELECT DISTINCT chat_id FROM exceptions WHERE subreddit=?", (subreddit,))
+    return [chat_id for (chat_id,) in c.fetchall()]
+
+
+def unavailable_subreddits():
+    c = DB.cursor()
+    c.execute("SELECT DISTINCT subreddit FROM exceptions")
+    return [sub for (sub,) in c.fetchall()]

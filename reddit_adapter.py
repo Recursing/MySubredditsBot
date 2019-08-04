@@ -68,7 +68,8 @@ async def get_posts_from_endpoint(endpoint: str) -> List[Dict]:
     try:
         r_json = r.json()
     except json.decoder.JSONDecodeError:
-        raise InvalidAnswerFromEndpoint(f"{endpoint} return invalid json:\n{r.text}")
+        # TODO retry get
+        raise InvalidAnswerFromEndpoint(f"{endpoint} returned invalid json: {r.text}")
     if "data" in r_json:
         posts = [p["data"] for p in r_json["data"]["children"] if p["kind"] == "t3"]
         if posts:
