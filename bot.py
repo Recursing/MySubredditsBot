@@ -2,6 +2,7 @@ import traceback
 from aiogram import Bot, Dispatcher, executor, types, exceptions
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher.filters.state import State, StatesGroup
+from aiogram.dispatcher.filters import Command
 import subscriptions_manager
 import reddit_adapter
 import logging
@@ -25,6 +26,41 @@ bot = Bot(credentials.BOT_API_KEY)  # commands=list(commands.keys()))
 dp = Dispatcher(bot, storage=MemoryStorage())
 
 
+def delete_user(chat_id):
+    logger.warning(f"Unsubscribing user {chat_id}")
+    for sub, _th, _pm in subscriptions_manager.user_subscriptions(chat_id):
+        subscriptions_manager.unsubscribe(chat_id, sub)
+
+
+async def reply_wrapper(message, *args, **kwargs):
+    kwargs["reply_to_message_id"] = message.message_id
+    await send_message_wrapper(message.chat.id, *args, **kwargs)
+
+
+async def send_message_wrapper(*args, **kwargs):
+    try:
+        await bot.send_message(*args, **kwargs)
+    except exceptions.Unauthorized as e:
+        chat_id = kwargs.get("chat_id") or args[0]
+        unsub_reasons = [
+            "chat not found",
+            "bot was blocked by the user",
+            "user is deactivated",
+            "chat not found",
+            "bot was kicked",
+        ]
+        if any(reason in str(e) for reason in unsub_reasons):
+            delete_user(chat_id)
+        else:
+            await log_exception(e, f"Failed to send {args} {kwargs}")
+    except exceptions.InlineKeyboardExpected as e:
+        if "reply_markup" in kwargs:
+            del kwargs["reply_markup"]
+            await send_message_wrapper(*args, **kwargs)
+        else:
+            raise e
+
+
 class StateMachine(StatesGroup):
     asked_remove = State()
     asked_add = State()
@@ -32,7 +68,7 @@ class StateMachine(StatesGroup):
     asked_less = State()
 
 
-@dp.channel_post_handler(state="*", commands=["cancel"])
+@dp.channel_post_handler(Command(["cancel"]), state="*")
 @dp.message_handler(state="*", commands=["cancel"])
 async def cancel_handler(message: types.Message, state, raw_state=None):
     """
@@ -41,7 +77,7 @@ async def cancel_handler(message: types.Message, state, raw_state=None):
     # Cancel state and inform user about it
     await state.finish()
     # And remove keyboard (just in case)
-    await message.reply("Canceled.", reply_markup=types.ReplyKeyboardRemove())
+    await reply_wrapper(message, "Canceled.", reply_markup=types.ReplyKeyboardRemove())
 
 
 @dp.callback_query_handler(lambda cb: cb.data.startswith("cancel"))
@@ -52,23 +88,23 @@ async def inline_cancel_handler(query: types.CallbackQuery):
 
 async def add_subscription(chat_id: int, sub: str) -> bool:
     if not reddit_adapter.valid_subreddit(sub):
-        await bot.send_message(chat_id, "{} is not a valid subreddit name".format(sub))
+        await send_message_wrapper(chat_id, f"{sub} is not a valid subreddit name")
         return False
     try:
         await reddit_adapter.check_subreddit(sub)
     except reddit_adapter.SubredditEmpty:
-        await bot.send_message(chat_id, f"r/{sub} does not exist or is empty")
+        await send_message_wrapper(chat_id, f"r/{sub} does not exist or is empty")
         return False
     except reddit_adapter.SubredditBanned:
-        await bot.send_message(chat_id, f"r/{sub} has been banned")
+        await send_message_wrapper(chat_id, f"r/{sub} has been banned")
         return False
     except reddit_adapter.SubredditPrivate:
-        await bot.send_message(chat_id, f"r/{sub} is private")
+        await send_message_wrapper(chat_id, f"r/{sub} is private")
         return False
     monthly_rank = 31
     threshold = await reddit_adapter.get_threshold(sub, monthly_rank)
     if not subscriptions_manager.subscribe(chat_id, sub, threshold, monthly_rank):
-        await bot.send_message(chat_id, f"You are already subscribed to {sub}")
+        await send_message_wrapper(chat_id, f"You are already subscribed to {sub}")
         return False
     return True
 
@@ -92,7 +128,7 @@ async def add_reply_handler(message: types.message, state):
     await state.finish()
 
 
-@dp.channel_post_handler(commands=["add"])
+@dp.channel_post_handler(Command(["add"]))
 @dp.message_handler(commands=["add"])
 async def handle_add(message: types.message):
     """
@@ -111,13 +147,15 @@ async def handle_add(message: types.message):
             resize_keyboard=True, selective=True, one_time_keyboard=True
         )
         markup.add("/cancel")
-        await message.reply("What would you like to subscribe to?", reply_markup=markup)
+        await reply_wrapper(
+            message, "What would you like to subscribe to?", reply_markup=markup
+        )
 
 
 async def remove_subscriptions(chat_id: int, subs: List[str]):
     for sub in subs:
         if not subscriptions_manager.unsubscribe(chat_id, sub):
-            await bot.send_message(chat_id, "You are not subscribed to {}".format(sub))
+            await send_message_wrapper(chat_id, f"You are not subscribed to {sub}")
     await list_subscriptions(chat_id)
 
 
@@ -128,7 +166,7 @@ async def remove_reply_handler(message: types.message, state):
     await state.finish()
 
 
-@dp.channel_post_handler(commands=["remove"])
+@dp.channel_post_handler(Command(["remove"]))
 @dp.message_handler(commands=["remove"])
 async def handle_remove(message: types.message):
     """
@@ -143,8 +181,9 @@ async def handle_remove(message: types.message):
         subreddits = [subreddit for subreddit, threshold in user_thresholds]
         subreddits.sort()
         if not subreddits:
-            await message.reply(
-                "You are not subscribed to any subreddit, press /add to subscribe"
+            await reply_wrapper(
+                message,
+                "You are not subscribed to any subreddit, press /add to subscribe",
             )
         else:
             await StateMachine.asked_remove.set()
@@ -154,7 +193,8 @@ async def handle_remove(message: types.message):
             for row in chunks(subreddits):
                 markup.add(*row)
             markup.add("/cancel")
-            await message.reply(
+            await reply_wrapper(
+                message,
                 "Which subreddit would you like to unsubscribe from?",
                 reply_markup=markup,
             )
@@ -167,9 +207,8 @@ async def change_threshold(
         current_monthly = subscriptions_manager.get_per_month(chat_id, subreddit)
     except Exception as e:
         await log_exception(e, f"Getting monthly threshold for {chat_id}, {subreddit}")
-        await bot.send_message(
-            chat_id,
-            "You are not subscribed to {}, press /add to subscribe".format(subreddit),
+        await send_message_wrapper(
+            chat_id, f"You are not subscribed to {subreddit}, press /add to subscribe"
         )
         return
     new_monthly = round(current_monthly * factor)
@@ -181,7 +220,7 @@ async def change_threshold(
     if new_monthly > 300:
         new_monthly = 300
     if new_monthly < 1:
-        await bot.send_message(chat_id=chat_id, text="Press /remove to unsubscribe")
+        await send_message_wrapper(chat_id=chat_id, text="Press /remove to unsubscribe")
         return
     new_threshold = await reddit_adapter.get_threshold(subreddit, new_monthly)
     subscriptions_manager.update_threshold(
@@ -198,7 +237,7 @@ async def change_threshold(
     )
     inline_keyboard.add(types.InlineKeyboardButton("cancel", callback_data="cancel"))
     if original_message is None:
-        await bot.send_message(chat_id, message_text, reply_markup=inline_keyboard)
+        await send_message_wrapper(chat_id, message_text, reply_markup=inline_keyboard)
     else:
         await bot.edit_message_text(
             text=message_text,
@@ -253,8 +292,9 @@ async def handle_change_threshold(message: types.message, factor: float):
         subreddits = [subreddit for subreddit, threshold in user_thresholds]
         subreddits.sort()
         if not subreddits:
-            await message.reply(
-                "You are not subscribed to any subreddit, press /add to subscribe"
+            await reply_wrapper(
+                message,
+                "You are not subscribed to any subreddit, press /add to subscribe",
             )
         else:
             if factor > 1:
@@ -271,10 +311,10 @@ async def handle_change_threshold(message: types.message, factor: float):
             question_template = "From which subreddit would you like to get {} updates?"
             question = question_template.format("more" if factor > 1 else "fewer")
 
-            await message.reply(question, reply_markup=markup)
+            await reply_wrapper(message, question, reply_markup=markup)
 
 
-@dp.channel_post_handler(commands=["moar", "more", "mo4r"])
+@dp.channel_post_handler(Command(["moar", "more", "mo4r"]))
 @dp.message_handler(commands=["moar", "more", "mo4r"])
 async def handle_mo4r(message: dict):
     """
@@ -291,7 +331,7 @@ def format_period(per_month):
     return f"one every {31/per_month:.1f} days"
 
 
-@dp.channel_post_handler(commands=["less", "fewer"])
+@dp.channel_post_handler(Command(["less", "fewer"]))
 @dp.message_handler(commands=["less", "fewer"])
 async def handle_less(message: dict):
     """
@@ -310,20 +350,20 @@ async def list_subscriptions(chat_id: int):
             )
             for sub, th, per_month in subscriptions
         )
-        await bot.send_message(
+        await send_message_wrapper(
             chat_id,
-            "You are currently subscribed to:\n\n{}".format(text_list),
+            f"You are currently subscribed to:\n\n{text_list}",
             parse_mode="Markdown",
             reply_markup=types.ReplyKeyboardRemove(),
             disable_web_page_preview=True,
         )
     else:
-        await bot.send_message(
+        await send_message_wrapper(
             chat_id, "You are not subscribed to any subreddit, press /add to subscribe"
         )
 
 
-@dp.channel_post_handler(commands=["list"])
+@dp.channel_post_handler(Command(["list"]))
 @dp.message_handler(commands=["list"])
 async def handle_list(message: dict):
     """
@@ -336,40 +376,12 @@ async def send_post(chat_id: int, post):
     if not subscriptions_manager.already_sent(chat_id, post["id"]):
         formatted_post = reddit_adapter.formatted_post(post)
         try:
-            await bot.send_message(chat_id, formatted_post, parse_mode="HTML")
+            await send_message_wrapper(chat_id, formatted_post, parse_mode="HTML")
             subscriptions_manager.mark_as_sent(chat_id, post["id"])
-        except exceptions.Unauthorized as e:
-            unsub_reasons = [
-                "chat not found",
-                "bot was blocked by the user",
-                "user is deactivated",
-                "chat not found",
-                "bot was kicked",
-            ]
-            if any(reason in str(e) for reason in unsub_reasons):
-                logger.warning("Unsubscribing user {}".format(chat_id))
-                for sub, th, pm in subscriptions_manager.user_subscriptions(chat_id):
-                    subscriptions_manager.unsubscribe(chat_id, sub)
-            else:
-                await log_exception(e, f"Failed to send {formatted_post} to {chat_id}")
         except Exception as e:
             await log_exception(e, f"Failed to send {formatted_post} to {chat_id}")
-            if (
-                hasattr(e, "json")
-                and "group chat was upgraded to a supergroup chat"
-                in getattr(e, "json")["description"]
-            ):
-                logger.warning("Resubscribing group {}".format(chat_id))
-                for sub, th, pm in subscriptions_manager.user_subscriptions(chat_id):
-                    subscriptions_manager.subscribe(
-                        getattr(e, "json")["parameters"]["migrate_to_chat_id"],
-                        sub,
-                        th,
-                        pm,
-                    )
-                    subscriptions_manager.unsubscribe(chat_id, sub)
-            else:
-                time.sleep(60 * 2)
+            # If I'm doing something wrong or telegram is down, at least wait a bit
+            time.sleep(60 * 2)
 
 
 async def send_subreddit_updates(subreddit: str):
@@ -393,7 +405,7 @@ async def send_subreddit_updates(subreddit: str):
             if not subscriptions_manager.already_sent_exception(
                 chat_id, subreddit, "banned"
             ):
-                await bot.send_message(chat_id, f"r/{subreddit} has been banned")
+                await send_message_wrapper(chat_id, f"r/{subreddit} has been banned")
                 subscriptions_manager.mark_exception_as_sent(
                     chat_id, subreddit, "banned"
                 )
@@ -403,7 +415,9 @@ async def send_subreddit_updates(subreddit: str):
             if not subscriptions_manager.already_sent_exception(
                 chat_id, subreddit, "private"
             ):
-                await bot.send_message(chat_id, f"r/{subreddit} has been made private")
+                await send_message_wrapper(
+                    chat_id, f"r/{subreddit} has been made private"
+                )
                 subscriptions_manager.mark_exception_as_sent(
                     chat_id, subreddit, "private"
                 )
@@ -425,7 +439,7 @@ def chunks(sequence, chunk_size=2):
         lsequence = lsequence[size:]
 
 
-@dp.channel_post_handler(commands=["start", "help"])
+@dp.channel_post_handler(Command(["start", "help"]))
 @dp.message_handler(commands=["start", "help"])
 async def help_message(message: dict):
     """
@@ -440,9 +454,7 @@ async def help_message(message: dict):
         "/list": handle_list,
     }
 
-    command_docs = "".join(
-        "{}: {}".format(key, f.__doc__) for key, f in commands.items()
-    )
+    command_docs = "".join(f"{key}: {f.__doc__}" for key, f in commands.items())
 
     markup = types.ReplyKeyboardMarkup(
         resize_keyboard=True, selective=True, one_time_keyboard=True
@@ -451,9 +463,9 @@ async def help_message(message: dict):
     for row in chunks(command_list):
         markup.add(*row)
 
-    await bot.send_message(
+    await send_message_wrapper(
         message["chat"]["id"],
-        "Try the following commands: \n    {}".format(command_docs),
+        f"Try the following commands: \n    {command_docs}",
         reply_markup=markup,
     )
 
@@ -490,7 +502,7 @@ async def check_exceptions(refresh_period=24 * 60 * 60):
             old_subscribers = subscriptions_manager.get_old_subscribers(sub)
             for chat_id in old_subscribers:
                 await add_subscription(chat_id, sub)
-                await bot.send_message(chat_id, f"{sub} is now available again")
+                await send_message_wrapper(chat_id, f"{sub} is now available again")
     except Exception as e:
         await log_exception(e, f"Exception while checking unavailability of {sub}")
     await asyncio.sleep(refresh_period)
@@ -537,8 +549,8 @@ async def log_exception(e: Exception, message: str):
     formatted_traceback = format_traceback(e)
     logger.error(message, exc_info=True)
     logger.error(formatted_traceback)
-    await bot.send_message(credentials.ADMIN_ID, message)
-    await bot.send_message(credentials.ADMIN_ID, formatted_traceback)
+    await send_message_wrapper(credentials.ADMIN_ID, message)
+    await send_message_wrapper(credentials.ADMIN_ID, formatted_traceback)
 
 
 if __name__ == "__main__":
