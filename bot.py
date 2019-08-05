@@ -32,8 +32,8 @@ class StateMachine(StatesGroup):
     asked_less = State()
 
 
+@dp.channel_post_handler(state="*", commands=["cancel"])
 @dp.message_handler(state="*", commands=["cancel"])
-@dp.message_handler(lambda message: message.text.lower() == "cancel", state="*")
 async def cancel_handler(message: types.Message, state, raw_state=None):
     """
     Allow user to cancel any action
@@ -84,6 +84,7 @@ async def add_subscriptions(chat_id: int, subs: List[str]):
             await send_subreddit_updates(sub)
 
 
+@dp.channel_post_handler(state=StateMachine.asked_add)
 @dp.message_handler(state=StateMachine.asked_add)
 async def add_reply_handler(message: types.message, state):
     subs = message.text.lower().replace(",", " ").replace("+", " ").split()
@@ -91,6 +92,7 @@ async def add_reply_handler(message: types.message, state):
     await state.finish()
 
 
+@dp.channel_post_handler(commands=["add"])
 @dp.message_handler(commands=["add"])
 async def handle_add(message: types.message):
     """
@@ -119,12 +121,14 @@ async def remove_subscriptions(chat_id: int, subs: List[str]):
     await list_subscriptions(chat_id)
 
 
+@dp.channel_post_handler(state=StateMachine.asked_remove)
 @dp.message_handler(state=StateMachine.asked_remove)
 async def remove_reply_handler(message: types.message, state):
     await remove_subscriptions(message.chat.id, message["text"].lower().split())
     await state.finish()
 
 
+@dp.channel_post_handler(commands=["remove"])
 @dp.message_handler(commands=["remove"])
 async def handle_remove(message: types.message):
     """
@@ -222,12 +226,14 @@ async def inline_more_handler(query: types.CallbackQuery):
     )
 
 
+@dp.channel_post_handler(state=StateMachine.asked_less)
 @dp.message_handler(state=StateMachine.asked_less)
 async def asked_less_handler(message: types.message, state):
     await change_threshold(message.chat.id, message["text"].lower(), factor=1 / 1.5)
     await state.finish()
 
 
+@dp.channel_post_handler(state=StateMachine.asked_more)
 @dp.message_handler(state=StateMachine.asked_more)
 async def asked_more_handler(message: types.message, state):
     await change_threshold(message.chat.id, message["text"].lower(), factor=1.5)
@@ -268,6 +274,7 @@ async def handle_change_threshold(message: types.message, factor: float):
             await message.reply(question, reply_markup=markup)
 
 
+@dp.channel_post_handler(commands=["moar", "more", "mo4r"])
 @dp.message_handler(commands=["moar", "more", "mo4r"])
 async def handle_mo4r(message: dict):
     """
@@ -278,12 +285,13 @@ async def handle_mo4r(message: dict):
 
 def format_period(per_month):
     if per_month > 31:
-        return f"{per_month/31:.2f} per day"
+        return f"{per_month/31:.1f} per day"
     elif per_month == 31:
         return f"one every day"
-    return f"one every {31/per_month:.2f} days"
+    return f"one every {31/per_month:.1f} days"
 
 
+@dp.channel_post_handler(commands=["less", "fewer"])
 @dp.message_handler(commands=["less", "fewer"])
 async def handle_less(message: dict):
     """
@@ -315,6 +323,7 @@ async def list_subscriptions(chat_id: int):
         )
 
 
+@dp.channel_post_handler(commands=["list"])
 @dp.message_handler(commands=["list"])
 async def handle_list(message: dict):
     """
@@ -416,6 +425,7 @@ def chunks(sequence, chunk_size=2):
         lsequence = lsequence[size:]
 
 
+@dp.channel_post_handler(commands=["start", "help"])
 @dp.message_handler(commands=["start", "help"])
 async def help_message(message: dict):
     """
