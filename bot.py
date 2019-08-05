@@ -59,6 +59,22 @@ async def send_message_wrapper(*args, **kwargs):
             await send_message_wrapper(*args, **kwargs)
         else:
             raise e
+    except exceptions.MigrateToChat as e:
+        new_chat_id = e.migrate_to_chat_id
+        old_chat_id = kwargs.get("chat_id") or args[0]
+        for sub, th, pm in subscriptions_manager.user_subscriptions(old_chat_id):
+            subscriptions_manager.subscribe(new_chat_id, sub, th, pm)
+            subscriptions_manager.unsubscribe(old_chat_id, sub)
+    except exceptions.RetryAfter as e:
+        time_to_sleep = e.timeout + 1
+        time.sleep(time_to_sleep)
+    except (
+        exceptions.NotFound,
+        exceptions.RestartingTelegram,
+        exceptions.TelegramAPIError,
+    ) as e:
+        await log_exception(e, "Telegram down?")
+        time.sleep(60 * 30)  # Telegram down, sleep a while
 
 
 class StateMachine(StatesGroup):
@@ -549,8 +565,11 @@ async def log_exception(e: Exception, message: str):
     formatted_traceback = format_traceback(e)
     logger.error(message, exc_info=True)
     logger.error(formatted_traceback)
-    await send_message_wrapper(credentials.ADMIN_ID, message)
-    await send_message_wrapper(credentials.ADMIN_ID, formatted_traceback)
+    try:
+        await bot.send_message(credentials.ADMIN_ID, message)
+        await bot.send_message(credentials.ADMIN_ID, formatted_traceback)
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":
