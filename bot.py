@@ -177,6 +177,8 @@ async def remove_subscriptions(chat_id: int, subs: List[str]):
     for sub in subs:
         if not subscriptions_manager.unsubscribe(chat_id, sub):
             await send_message_wrapper(chat_id, f"You are not subscribed to {sub}")
+        else:
+            await send_message_wrapper(chat_id, f"You have unsubscribed from {sub}")
     await list_subscriptions(chat_id)
 
 
@@ -204,7 +206,7 @@ def sub_list_keyboard(chat_id: int, command):
     if not subreddits:
         return types.ReplyKeyboardRemove()
 
-    if len(subreddits) > 40:
+    if len(subreddits) >= 10:
         # TODO paginate
         markup = types.ReplyKeyboardMarkup(
             resize_keyboard=True, selective=True, one_time_keyboard=True
