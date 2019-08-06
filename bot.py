@@ -91,7 +91,7 @@ async def send_message_wrapper(*args, **kwargs):
 
 @catch_telegram_exceptions
 async def send_media_wrapper(chat_id, url, caption, parse_mode):
-    assert contains_media(url)
+    assert await contains_media(url)
     image_extensions = ["jpg", "png"]
     animation_extensions = ["gif", "gifv", "mp4"]
     if "gfycat.com" in url:
@@ -492,10 +492,10 @@ async def get_gfycat_mp4_url(gfycat_url: str) -> str:
     return urls["mp4Url"]
 
 
-def contains_media(url: str) -> bool:
+async def contains_media(url: str) -> bool:
     media_extensions = [".gif", ".jpg", ".png", ".mp4", ".gifv"]
     if 2 <= len(url.split(".")[-1]) <= 4:
-        log_exception(Exception("Unknown extension"), url)
+        await log_exception(Exception("Unknown extension"), url)
     return "gfycat.com" in url or any(url.endswith(e) for e in media_extensions)
 
 
@@ -506,7 +506,7 @@ async def send_post(chat_id: int, post):
     try:
         formatted_post = reddit_adapter.formatted_post(post)
         sent = False
-        if contains_media(post["url"]):
+        if await contains_media(post["url"]):
             sent = await send_media_wrapper(
                 chat_id, post["url"], formatted_post, parse_mode="HTML"
             )
