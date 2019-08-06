@@ -2,6 +2,7 @@ import re
 import httpx
 import json
 import urllib.parse
+import asyncio
 from typing import List, Dict
 from datetime import datetime
 
@@ -70,13 +71,15 @@ async def get_posts_from_endpoint(endpoint: str, retry=True) -> List[Dict]:
         r = await client.get(endpoint, headers=headers, timeout=60)
     except httpx.exceptions.ConnectTimeout:
         if retry:
+            await asyncio.sleep(2 * 60)
             await get_posts_from_endpoint(endpoint, retry=False)
         else:
             return []
     try:
-        r_json = r.json()
+        r_json = dict(r.json())
     except json.decoder.JSONDecodeError:
         if retry:
+            await asyncio.sleep(2 * 60)
             return await get_posts_from_endpoint(endpoint, retry=False)
         else:
             raise InvalidAnswerFromEndpoint(
@@ -122,6 +125,6 @@ async def check_subreddit(subreddit: str):
     await new_posts(subreddit)
 
 
-def valid_subreddit(text: str):
+def valid_subreddit(text: str) -> bool:
     pattern = r"\A[A-Za-z0-9][A-Za-z0-9_]{2,20}\Z"
     return bool(re.match(pattern, text))
