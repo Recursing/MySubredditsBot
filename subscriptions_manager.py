@@ -46,12 +46,8 @@ def subscribe(chat_id: int, subreddit: str, threshold: int, monthly_rank: int) -
         return false if the user is already subscribed
     """
     c = DB.cursor()
-    # try to update, if not found insert
-    c.execute(
-        "SELECT * FROM subscriptions WHERE chat_id=? AND subreddit=?",
-        (chat_id, subreddit),
-    )
-    if c.fetchone():
+    # try to subscribe, if not found insert
+    if is_subscribed(chat_id, subreddit):
         return False
 
     c.execute(
@@ -59,6 +55,16 @@ def subscribe(chat_id: int, subreddit: str, threshold: int, monthly_rank: int) -
         (chat_id, subreddit, threshold, monthly_rank),
     )
     return True
+
+
+def is_subscribed(chat_id: int, subreddit: str) -> bool:
+    c = DB.cursor()
+    # try to update, if not found insert
+    c.execute(
+        "SELECT * FROM subscriptions WHERE chat_id=? AND subreddit=?",
+        (chat_id, subreddit),
+    )
+    return bool(c.fetchone())
 
 
 def unsubscribe(chat_id: int, subreddit: str):
