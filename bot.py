@@ -77,8 +77,8 @@ def catch_telegram_exceptions(func: Callable) -> Callable:
             exceptions.RestartingTelegram,
             exceptions.TelegramAPIError,
         ) as e:
-            await log_exception(e, f"Telegram down? {args} {kwargs}")
-            time.sleep(60 * 30)  # Telegram down, sleep a while
+            await log_exception(e, f"TelegramApiError {args} {kwargs}")
+            # await asyncio.sleep(60 * 30)  # Telegram down, sleep a while
         return False
 
     return wrap
@@ -94,15 +94,26 @@ async def send_media_wrapper(chat_id: int, url: str, caption: str, parse_mode: s
     assert await contains_media(url)
     image_extensions = ["jpg", "png"]
     animation_extensions = ["gif", "gifv", "mp4"]
+    url = url.replace("https:", "http:")
     if "gfycat.com" in url:
         url = await get_gfycat_mp4_url(url)
     elif any(url.endswith(e) for e in image_extensions):
         try:
             await bot.send_photo(chat_id, url, caption=caption, parse_mode=parse_mode)
-        except exceptions.PhotoDimensions:
+        except (exceptions.PhotoDimensions, exceptions.WrongFileIdentifier):
+            print("WrongFileIdentifier", url)
             await bot.send_message(chat_id, caption, parse_mode=parse_mode)
     elif any(url.endswith(e) for e in animation_extensions):
-        await bot.send_animation(chat_id, url, caption=caption, parse_mode=parse_mode)
+        try:
+            await bot.send_animation(
+                chat_id,
+                url.replace(".gifv", ".mp4"),
+                caption=caption,
+                parse_mode=parse_mode,
+            )
+        except exceptions.WrongFileIdentifier:
+            print("WrongFileIdentifier", url)
+            await bot.send_message(chat_id, caption, parse_mode=parse_mode)
 
 
 class StateMachine(StatesGroup):
