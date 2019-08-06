@@ -219,7 +219,7 @@ def sub_list_keyboard(chat_id: int, command):
         button_row = [
             types.InlineKeyboardButton(s, callback_data=f"{command}|{s}") for s in row
         ]
-        markup.add(button_row)
+        markup.row(*button_row)
     markup.add(types.InlineKeyboardButton("cancel", callback_data="cancel"))
     return markup
 
