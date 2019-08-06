@@ -98,7 +98,8 @@ async def send_media_wrapper(chat_id, url, caption, parse_mode):
         url = await get_gfycat_mp4_url(url)
     headers = {"user-agent": "my-subreddits-bot-0.1"}
     client = httpx.AsyncClient()
-    media = (await client.get(url, headers=headers, timeout=60)).read()
+    request = await client.get(url, headers=headers, timeout=60)
+    media = await request.read()
     if any(url.endswith(e) for e in image_extensions):
         await bot.send_photo(chat_id, media, caption=caption, parse_mode=parse_mode)
     if any(url.endswith(e) for e in animation_extensions):
