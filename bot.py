@@ -95,7 +95,7 @@ async def send_media_wrapper(chat_id, url, caption, parse_mode):
     image_extensions = ["jpg", "png"]
     animation_extensions = ["gif", "gifv", "mp4"]
     if "gfycat.com" in url:
-        url = get_gfycat_mp4_url(url)
+        url = await get_gfycat_mp4_url(url)
     headers = {"user-agent": "my-subreddits-bot-0.1"}
     client = httpx.AsyncClient()
     media = await client.get(url, headers=headers, timeout=60).read()
@@ -477,10 +477,11 @@ async def handle_list(message: dict):
     await list_subscriptions(message["chat"]["id"])
 
 
-def get_gfycat_mp4_url(gfycat_url: str) -> str:
+async def get_gfycat_mp4_url(gfycat_url: str) -> str:
     id_group = r"gfycat\.com\/(?:detail\/)?(\w+)"
     gfyid = re.findall(id_group, gfycat_url)[0]
-    r = httpx.get(f"https://api.gfycat.com/v1/gfycats/{gfyid}")
+    client = httpx.AsyncClient()
+    r = await client.get(f"https://api.gfycat.com/v1/gfycats/{gfyid}", timeout=60)
     urls = r.json()["gfyItem"]
     return urls["mp4Url"]
 
