@@ -98,7 +98,7 @@ async def send_media_wrapper(chat_id, url, caption, parse_mode):
         url = await get_gfycat_mp4_url(url)
     headers = {"user-agent": "my-subreddits-bot-0.1"}
     client = httpx.AsyncClient()
-    media = await client.get(url, headers=headers, timeout=60).read()
+    media = (await client.get(url, headers=headers, timeout=60)).read()
     if any(url.endswith(e) for e in image_extensions):
         bot.send_photo(chat_id, media, caption=caption, parse_mode=parse_mode)
     if any(url.endswith(e) for e in animation_extensions):
@@ -513,7 +513,7 @@ async def send_post(chat_id: int, post):
     except Exception as e:
         await log_exception(e, f"Failed to send {formatted_post} to {chat_id}")
         # If I'm doing something wrong or telegram is down, at least wait a bit
-        time.sleep(60 * 2)
+        await asyncio.sleep(60 * 2)
 
 
 async def send_subreddit_updates(subreddit: str):
