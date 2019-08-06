@@ -100,9 +100,14 @@ async def send_media_wrapper(chat_id, url, caption, parse_mode):
     client = httpx.AsyncClient()
     request = await client.get(url, headers=headers, timeout=60)
     media = await request.read()
-    if any(url.endswith(e) for e in image_extensions):
-        await bot.send_photo(chat_id, media, caption=caption, parse_mode=parse_mode)
-    if any(url.endswith(e) for e in animation_extensions):
+    if len(media) > 40_000_000:
+        await bot.send_message(chat_id, caption, parse_mode=parse_mode)
+    elif any(url.endswith(e) for e in image_extensions):
+        try:
+            await bot.send_photo(chat_id, media, caption=caption, parse_mode=parse_mode)
+        except exceptions.PhotoDimensions:
+            await bot.send_message(chat_id, caption, parse_mode=parse_mode)
+    elif any(url.endswith(e) for e in animation_extensions):
         await bot.send_animation(chat_id, media, caption=caption, parse_mode=parse_mode)
 
 
