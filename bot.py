@@ -9,7 +9,7 @@ import logging
 import time
 import asyncio
 import credentials
-from typing import List
+from typing import List, Tuple
 
 # Enable logging
 logging.basicConfig(
@@ -106,22 +106,24 @@ async def inline_cancel_handler(query: types.CallbackQuery, state):
     )
 
 
-async def add_subscription(chat_id: int, sub: str) -> bool:
+async def get_threshold(sub: str, monthly_rank: int) -> Tuple[int, str]:
     if not reddit_adapter.valid_subreddit(sub):
-        await send_message_wrapper(chat_id, f"{sub} is not a valid subreddit name")
-        return False
-    monthly_rank = 31
+        return 0, f"{sub} is not a valid subreddit name"
     try:
-        threshold = await reddit_adapter.get_threshold(sub, monthly_rank)
+        return await reddit_adapter.get_threshold(sub, monthly_rank), ""
     except reddit_adapter.SubredditEmpty:
-        await send_message_wrapper(chat_id, f"r/{sub} does not exist or is empty")
-        return False
+        return 0, f"r/{sub} does not exist or is empty"
     except reddit_adapter.SubredditBanned:
-        await send_message_wrapper(chat_id, f"r/{sub} has been banned")
-        return False
+        return 0, f"r/{sub} has been banned"
     except reddit_adapter.SubredditPrivate:
-        await send_message_wrapper(chat_id, f"r/{sub} is private")
-        return False
+        return 0, f"r/{sub} is private"
+
+
+async def add_subscription(chat_id: int, sub: str) -> bool:
+    monthly_rank = 31
+    threshold, error = await get_threshold(sub, monthly_rank)
+    if error:
+        await send_message_wrapper(chat_id, error)
     if not subscriptions_manager.subscribe(chat_id, sub, threshold, monthly_rank):
         await send_message_wrapper(chat_id, f"You are already subscribed to {sub}")
         return False
@@ -129,14 +131,26 @@ async def add_subscription(chat_id: int, sub: str) -> bool:
 
 
 async def add_subscriptions(chat_id: int, subs: List[str]):
-    new_subs = []
+    if len(subs) > 5:
+        await send_message_wrapper(
+            chat_id, f"Can't subscribe to more than 5 subreddits per message"
+        )
+        return
     for sub in subs:
-        if await add_subscription(chat_id, sub):
-            new_subs.append(sub)
-    if new_subs:
-        await list_subscriptions(chat_id)
-        for sub in new_subs:
-            await send_subreddit_updates(sub)
+        if subscriptions_manager.is_subscribed(chat_id, sub):
+            await send_message_wrapper(chat_id, f"You are already subscribed to {sub}")
+            return
+        _th, err = await get_threshold(sub, 31)
+        if err:
+            await send_message_wrapper(chat_id, err)
+            return
+
+    for sub in subs:
+        await add_subscription(chat_id, sub)
+    await send_message_wrapper(chat_id, f"You have subscribed to {', '.join(subs)}")
+    await list_subscriptions(chat_id)
+    for sub in subs:
+        await send_subreddit_updates(sub)
 
 
 @dp.channel_post_handler(state=StateMachine.asked_add)
@@ -175,10 +189,13 @@ async def handle_add(message: types.message):
 
 async def remove_subscriptions(chat_id: int, subs: List[str]):
     for sub in subs:
-        if not subscriptions_manager.unsubscribe(chat_id, sub):
-            await send_message_wrapper(chat_id, f"You are not subscribed to {sub}")
-        else:
-            await send_message_wrapper(chat_id, f"You have unsubscribed from {sub}")
+        if not subscriptions_manager.is_subscribed(chat_id, sub):
+            await send_message_wrapper(chat_id, f"Error: not subscribed to {sub}")
+            return
+
+    for sub in subs:
+        subscriptions_manager.unsubscribe(chat_id, sub)
+    await send_message_wrapper(chat_id, f"You have unsubscribed from {', '.join(subs)}")
     await list_subscriptions(chat_id)
 
 
@@ -267,14 +284,13 @@ async def inline_change_handler(query: types.CallbackQuery):
 async def change_threshold(
     chat_id: int, subreddit: str, factor: float, original_message=None
 ):
-    try:
-        current_monthly = subscriptions_manager.get_per_month(chat_id, subreddit)
-    except Exception as e:
-        await log_exception(e, f"Getting monthly threshold for {chat_id}, {subreddit}")
+    if not subscriptions_manager.is_subscribed(chat_id, subreddit):
         await send_message_wrapper(
             chat_id, f"You are not subscribed to {subreddit}, press /add to subscribe"
         )
         return
+
+    current_monthly = subscriptions_manager.get_per_month(chat_id, subreddit)
     new_monthly = round(current_monthly * factor)
     if new_monthly == current_monthly and factor != 1:
         if factor > 1:
@@ -435,6 +451,7 @@ async def handle_list(message: dict):
 
 async def send_post(chat_id: int, post):
     if not subscriptions_manager.already_sent(chat_id, post["id"]):
+        # TODO: handle images and gifs
         formatted_post = reddit_adapter.formatted_post(post)
         try:
             await send_message_wrapper(chat_id, formatted_post, parse_mode="HTML")
