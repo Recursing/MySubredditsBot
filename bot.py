@@ -494,7 +494,8 @@ async def get_gfycat_mp4_url(gfycat_url: str) -> str:
 
 async def contains_media(url: str) -> bool:
     media_extensions = [".gif", ".jpg", ".png", ".mp4", ".gifv"]
-    if 2 <= len(url.split(".")[-1]) <= 4:
+    extension = url.split(".")[-1]
+    if 2 <= len(extension) <= 4 and extension not in media_extensions:
         await log_exception(Exception("Unknown extension"), url)
     return "gfycat.com" in url or any(url.endswith(e) for e in media_extensions)
 
