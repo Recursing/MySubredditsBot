@@ -34,7 +34,7 @@ def formatted_post(post: Dict) -> str:
 
     template = (
         '{}: <a href="{}">{}</a> - <a href="https://www.reddit.com{}">'
-        "{}+ Comments</a> - Posted {} ago"
+        "{}+ Comments</a> - Posted {} ago\n\n{}"
     )
     return template.format(
         sub,
@@ -43,6 +43,7 @@ def formatted_post(post: Dict) -> str:
         permalink,
         comment_number,
         time_ago,
+        post["selftext"][:4000],
     )
 
 
@@ -76,7 +77,7 @@ async def get_posts_from_endpoint(endpoint: str, retry=True) -> List[Dict]:
         r_json = r.json()
     except json.decoder.JSONDecodeError:
         if retry:
-            await get_posts_from_endpoint(endpoint, retry=False)
+            return await get_posts_from_endpoint(endpoint, retry=False)
         else:
             raise InvalidAnswerFromEndpoint(
                 f"{endpoint} returned invalid json: {r.text}"
