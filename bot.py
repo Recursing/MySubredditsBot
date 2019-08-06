@@ -77,7 +77,7 @@ def catch_telegram_exceptions(func: Callable) -> Callable:
             exceptions.RestartingTelegram,
             exceptions.TelegramAPIError,
         ) as e:
-            await log_exception(e, "Telegram down?")
+            await log_exception(e, f"Telegram down? {args} {kwargs}")
             time.sleep(60 * 30)  # Telegram down, sleep a while
         return False
 
@@ -489,7 +489,7 @@ async def get_gfycat_mp4_url(gfycat_url: str) -> str:
 async def contains_media(url: str) -> bool:
     media_extensions = [".gif", ".jpg", ".png", ".mp4", ".gifv"]
     known_extensions = [".html"] + media_extensions
-    extension = url.split(".")[-1]
+    extension = "." + url.split(".")[-1]
     if 2 <= len(extension) <= 4 and extension not in known_extensions:
         await log_exception(Exception("Unknown extension"), url)
     return "gfycat.com" in url or any(url.endswith(e) for e in media_extensions)
