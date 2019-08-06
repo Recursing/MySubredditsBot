@@ -1,6 +1,6 @@
 import logging
 import sqlite3
-from typing import List
+from typing import List, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +67,7 @@ def is_subscribed(chat_id: int, subreddit: str) -> bool:
     return bool(c.fetchone())
 
 
-def unsubscribe(chat_id: int, subreddit: str):
+def unsubscribe(chat_id: int, subreddit: str) -> bool:
     """
         returns False if there is no matching subscription
     """
@@ -83,10 +83,8 @@ def update_threshold(
     chat_id: int, subreddit: str, new_threshold: int, new_monthly_rank: int
 ):
     c = DB.cursor()
-    c.execute(
-        "UPDATE subscriptions SET threshold=?, per_month=? WHERE chat_id=? AND subreddit=?",
-        (new_threshold, new_monthly_rank, chat_id, subreddit),
-    )
+    q = "UPDATE subscriptions SET threshold=?, per_month=? WHERE chat_id=? AND subreddit=?"
+    c.execute(q, (new_threshold, new_monthly_rank, chat_id, subreddit))
 
 
 def get_per_month(chat_id: int, subreddit: str) -> int:
@@ -104,33 +102,30 @@ def all_subreddits() -> List[str]:
     return [sub for (sub,) in c.fetchall()]
 
 
-def sub_followers(subreddit: str):
+def sub_followers(subreddit: str) -> List[Tuple[int, int, int]]:
     c = DB.cursor()
     c.execute(
         "SELECT chat_id, threshold, per_month FROM subscriptions WHERE subreddit=?",
         (subreddit,),
     )
-    for row in c.fetchall():
-        yield row
+    return list(c.fetchall())
 
 
-def user_thresholds(chat_id: int):
+def user_thresholds(chat_id: int) -> List[Tuple[str, int]]:
     c = DB.cursor()
     c.execute(
         "SELECT subreddit, threshold FROM subscriptions WHERE chat_id=?", (chat_id,)
     )
-    for row in c.fetchall():
-        yield row
+    return c.fetchall()
 
 
-def user_subscriptions(chat_id: int):
+def user_subscriptions(chat_id: int) -> List[Tuple[str, int, int]]:
     c = DB.cursor()
     c.execute(
         "SELECT subreddit, threshold, per_month FROM subscriptions WHERE chat_id=?",
         (chat_id,),
     )
-    for row in c.fetchall():
-        yield row
+    return c.fetchall()
 
 
 """
@@ -179,13 +174,13 @@ def mark_exception_as_sent(chat_id: int, subreddit: str, reason: str):
     c.execute("INSERT INTO exceptions VALUES (?,?,?)", (subreddit, reason, chat_id))
 
 
-def get_old_subscribers(subreddit: str):
+def get_old_subscribers(subreddit: str) -> List[int]:
     c = DB.cursor()
     c.execute("SELECT DISTINCT chat_id FROM exceptions WHERE subreddit=?", (subreddit,))
     return [chat_id for (chat_id,) in c.fetchall()]
 
 
-def unavailable_subreddits():
+def unavailable_subreddits() -> List[str]:
     c = DB.cursor()
     c.execute("SELECT DISTINCT subreddit FROM exceptions")
     return [sub for (sub,) in c.fetchall()]

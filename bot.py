@@ -155,7 +155,7 @@ async def add_subscriptions(chat_id: int, subs: List[str]):
 
 @dp.channel_post_handler(state=StateMachine.asked_add)
 @dp.message_handler(state=StateMachine.asked_add)
-async def add_reply_handler(message: types.message, state):
+async def add_reply_handler(message: types.Message, state):
     subs = message.text.lower().replace(",", " ").replace("+", " ").split()
     await add_subscriptions(message.chat.id, subs)
     await state.finish()
@@ -163,7 +163,7 @@ async def add_reply_handler(message: types.message, state):
 
 @dp.channel_post_handler(Command(["add"]))
 @dp.message_handler(commands=["add"])
-async def handle_add(message: types.message):
+async def handle_add(message: types.Message):
     """
         Subscribe to new space/comma separated subreddits
     """
@@ -211,7 +211,7 @@ async def remove_callback_handler(query: types.CallbackQuery, state):
 
 @dp.channel_post_handler(state=StateMachine.asked_remove)
 @dp.message_handler(state=StateMachine.asked_remove)
-async def remove_reply_handler(message: types.message, state):
+async def remove_reply_handler(message: types.Message, state):
     await remove_subscriptions(message.chat.id, message["text"].lower().split())
     await state.finish()
 
@@ -225,27 +225,27 @@ def sub_list_keyboard(chat_id: int, command):
 
     if len(subreddits) >= 10:
         # TODO paginate
-        markup = types.ReplyKeyboardMarkup(
+        reply_markup = types.ReplyKeyboardMarkup(
             resize_keyboard=True, selective=True, one_time_keyboard=True
         )
         for row in chunks(subreddits):
-            markup.add(*row)
-        markup.add("/cancel")
-        return markup
+            reply_markup.add(*row)
+        reply_markup.add("/cancel")
+        return reply_markup
 
-    markup = types.InlineKeyboardMarkup()
+    inline_markup = types.InlineKeyboardMarkup()
     for row in chunks(subreddits):
         button_row = [
             types.InlineKeyboardButton(s, callback_data=f"{command}|{s}") for s in row
         ]
-        markup.row(*button_row)
-    markup.add(types.InlineKeyboardButton("cancel", callback_data="cancel"))
-    return markup
+        inline_markup.row(*button_row)
+    inline_markup.add(types.InlineKeyboardButton("cancel", callback_data="cancel"))
+    return inline_markup
 
 
 @dp.channel_post_handler(Command(["remove"]))
 @dp.message_handler(commands=["remove"])
-async def handle_remove(message: types.message):
+async def handle_remove(message: types.Message):
     """
         Unsubscribe from a subreddit
     """
@@ -347,19 +347,19 @@ async def inline_more_handler(query: types.CallbackQuery):
 
 @dp.channel_post_handler(state=StateMachine.asked_less)
 @dp.message_handler(state=StateMachine.asked_less)
-async def asked_less_handler(message: types.message, state):
+async def asked_less_handler(message: types.Message, state):
     await change_threshold(message.chat.id, message["text"].lower(), factor=1 / 1.5)
     await state.finish()
 
 
 @dp.channel_post_handler(state=StateMachine.asked_more)
 @dp.message_handler(state=StateMachine.asked_more)
-async def asked_more_handler(message: types.message, state):
+async def asked_more_handler(message: types.Message, state):
     await change_threshold(message.chat.id, message["text"].lower(), factor=1.5)
     await state.finish()
 
 
-async def handle_change_threshold(message: types.message, factor: float):
+async def handle_change_threshold(message: types.Message, factor: float):
     """
         factor: new_monthly / current_monthly
     """
@@ -392,7 +392,7 @@ async def handle_change_threshold(message: types.message, factor: float):
 
 @dp.channel_post_handler(Command(["moar", "more", "mo4r"]))
 @dp.message_handler(commands=["moar", "more", "mo4r"])
-async def handle_mo4r(message: dict):
+async def handle_mo4r(message: types.Message):
     """
         Receive more updates from subreddit
     """
@@ -409,7 +409,7 @@ def format_period(per_month):
 
 @dp.channel_post_handler(Command(["less", "fewer"]))
 @dp.message_handler(commands=["less", "fewer"])
-async def handle_less(message: dict):
+async def handle_less(message: types.Message):
     """
         Receive fewer updates from subreddit
     """
@@ -463,7 +463,8 @@ async def send_post(chat_id: int, post):
 
 
 async def send_subreddit_updates(subreddit: str):
-    subscriptions = list(subscriptions_manager.sub_followers(subreddit))
+    subscriptions = subscriptions_manager.sub_followers(subreddit)
+    sent_to_chat_id = {chat_id: 0 for (chat_id, _t, _p) in subscriptions}
     try:
         try:
             post_iterator = await reddit_adapter.top_day_posts(subreddit)
@@ -476,10 +477,11 @@ async def send_subreddit_updates(subreddit: str):
             # subscriptions_manager.store_post(post.id, post.title, post.score,
             #                                 post.created_utc, cur_timestamp, subreddit)
             for chat_id, threshold, _pm in subscriptions:
-                if post["score"] > threshold:
+                if post["score"] > threshold and sent_to_chat_id[chat_id] < 2:
                     await send_post(chat_id, post)
+                    sent_to_chat_id[chat_id] += 1
     except reddit_adapter.SubredditBanned:
-        for chat_id, _threshold, _pm in subscriptions + [(credentials.ADMIN_ID, 0)]:
+        for chat_id, _threshold, _pm in subscriptions + [(credentials.ADMIN_ID, 0, 0)]:
             if not subscriptions_manager.already_sent_exception(
                 chat_id, subreddit, "banned"
             ):
@@ -617,7 +619,7 @@ async def on_startup(dp):
     asyncio.create_task(loop_forever(update_thresholds))
 
 
-def format_traceback(e: Exception):
+def format_traceback(e: Exception) -> str:
     tb = traceback.format_tb(e.__traceback__)
     line_sep = "==============================\n"
     return f"{e!r}:\n{line_sep.join(tb)}"
@@ -628,8 +630,8 @@ async def log_exception(e: Exception, message: str):
     logger.error(message, exc_info=True)
     logger.error(formatted_traceback)
     try:
-        await bot.send_message(credentials.ADMIN_ID, message)
-        await bot.send_message(credentials.ADMIN_ID, formatted_traceback)
+        await bot.send_message(chat_id=credentials.ADMIN_ID, text=formatted_traceback)
+        await bot.send_message(chat_id=credentials.ADMIN_ID, text=message)
     except Exception:
         pass
 
