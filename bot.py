@@ -100,9 +100,9 @@ async def send_media_wrapper(chat_id, url, caption, parse_mode):
     client = httpx.AsyncClient()
     media = (await client.get(url, headers=headers, timeout=60)).read()
     if any(url.endswith(e) for e in image_extensions):
-        bot.send_photo(chat_id, media, caption=caption, parse_mode=parse_mode)
+        await bot.send_photo(chat_id, media, caption=caption, parse_mode=parse_mode)
     if any(url.endswith(e) for e in animation_extensions):
-        bot.send_animation(chat_id, media, caption=caption, parse_mode=parse_mode)
+        await bot.send_animation(chat_id, media, caption=caption, parse_mode=parse_mode)
 
 
 class StateMachine(StatesGroup):
