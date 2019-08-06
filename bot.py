@@ -96,9 +96,10 @@ async def cancel_handler(message: types.Message, state, raw_state=None):
     await reply_wrapper(message, "Canceled.", reply_markup=types.ReplyKeyboardRemove())
 
 
-@dp.callback_query_handler(lambda cb: cb.data.startswith("cancel"))
-async def inline_cancel_handler(query: types.CallbackQuery):
+@dp.callback_query_handler(lambda cb: cb.data.startswith("cancel"), state="*")
+async def inline_cancel_handler(query: types.CallbackQuery, state):
     message = query.message
+    await state.finish()
     await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
 
 
@@ -159,12 +160,14 @@ async def handle_add(message: types.message):
         )
     else:
         await StateMachine.asked_add.set()
-        markup = types.ReplyKeyboardMarkup(
-            resize_keyboard=True, selective=True, one_time_keyboard=True
+        inline_keyboard = types.InlineKeyboardMarkup()
+        inline_keyboard.add(
+            types.InlineKeyboardButton("cancel", callback_data="cancel")
         )
-        markup.add("/cancel")
         await reply_wrapper(
-            message, "What would you like to subscribe to?", reply_markup=markup
+            message,
+            "What would you like to subscribe to?",
+            reply_markup=inline_keyboard,
         )
 
 
@@ -341,10 +344,10 @@ async def handle_mo4r(message: dict):
 
 def format_period(per_month):
     if per_month > 31:
-        return f"{per_month/31:.1f} per day"
+        return f"{per_month/31:.1f} messages per day"
     elif per_month == 31:
-        return f"one every day"
-    return f"one every {31/per_month:.1f} days"
+        return f"one message every day"
+    return f"one message every {31/per_month:.1f} days"
 
 
 @dp.channel_post_handler(Command(["less", "fewer"]))
