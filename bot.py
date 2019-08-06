@@ -90,25 +90,19 @@ async def send_message_wrapper(*args, **kwargs):
 
 
 @catch_telegram_exceptions
-async def send_media_wrapper(chat_id, url, caption, parse_mode):
+async def send_media_wrapper(chat_id: int, url: str, caption: str, parse_mode: str):
     assert await contains_media(url)
     image_extensions = ["jpg", "png"]
     animation_extensions = ["gif", "gifv", "mp4"]
     if "gfycat.com" in url:
         url = await get_gfycat_mp4_url(url)
-    headers = {"user-agent": "my-subreddits-bot-0.1"}
-    client = httpx.AsyncClient()
-    request = await client.get(url, headers=headers, timeout=60)
-    media = await request.read()
-    if len(media) > 40_000_000:
-        await bot.send_message(chat_id, caption, parse_mode=parse_mode)
     elif any(url.endswith(e) for e in image_extensions):
         try:
-            await bot.send_photo(chat_id, media, caption=caption, parse_mode=parse_mode)
+            await bot.send_photo(chat_id, url, caption=caption, parse_mode=parse_mode)
         except exceptions.PhotoDimensions:
             await bot.send_message(chat_id, caption, parse_mode=parse_mode)
     elif any(url.endswith(e) for e in animation_extensions):
-        await bot.send_animation(chat_id, media, caption=caption, parse_mode=parse_mode)
+        await bot.send_animation(chat_id, url, caption=caption, parse_mode=parse_mode)
 
 
 class StateMachine(StatesGroup):
@@ -494,8 +488,9 @@ async def get_gfycat_mp4_url(gfycat_url: str) -> str:
 
 async def contains_media(url: str) -> bool:
     media_extensions = [".gif", ".jpg", ".png", ".mp4", ".gifv"]
+    known_extensions = [".html"] + media_extensions
     extension = url.split(".")[-1]
-    if 2 <= len(extension) <= 4 and extension not in media_extensions:
+    if 2 <= len(extension) <= 4 and extension not in known_extensions:
         await log_exception(Exception("Unknown extension"), url)
     return "gfycat.com" in url or any(url.endswith(e) for e in media_extensions)
 
