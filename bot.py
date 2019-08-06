@@ -42,7 +42,7 @@ async def reply_wrapper(message, *args, **kwargs):
 def catch_telegram_exceptions(func: Callable) -> Callable:
     async def wrap(*args, **kwargs) -> bool:
         try:
-            func(*args, **kwargs)
+            await func(*args, **kwargs)
             return True
         except exceptions.Unauthorized as e:
             chat_id = kwargs.get("chat_id") or args[0]
