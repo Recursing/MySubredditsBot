@@ -101,14 +101,18 @@ async def inline_cancel_handler(query: types.CallbackQuery, state):
     message = query.message
     await state.finish()
     await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+    await send_message_wrapper(
+        message.chat.id, "Canceled.", reply_markup=types.ReplyKeyboardRemove()
+    )
 
 
 async def add_subscription(chat_id: int, sub: str) -> bool:
     if not reddit_adapter.valid_subreddit(sub):
         await send_message_wrapper(chat_id, f"{sub} is not a valid subreddit name")
         return False
+    monthly_rank = 31
     try:
-        await reddit_adapter.check_subreddit(sub)
+        threshold = await reddit_adapter.get_threshold(sub, monthly_rank)
     except reddit_adapter.SubredditEmpty:
         await send_message_wrapper(chat_id, f"r/{sub} does not exist or is empty")
         return False
@@ -118,8 +122,6 @@ async def add_subscription(chat_id: int, sub: str) -> bool:
     except reddit_adapter.SubredditPrivate:
         await send_message_wrapper(chat_id, f"r/{sub} is private")
         return False
-    monthly_rank = 31
-    threshold = await reddit_adapter.get_threshold(sub, monthly_rank)
     if not subscriptions_manager.subscribe(chat_id, sub, threshold, monthly_rank):
         await send_message_wrapper(chat_id, f"You are already subscribed to {sub}")
         return False
@@ -178,11 +180,48 @@ async def remove_subscriptions(chat_id: int, subs: List[str]):
     await list_subscriptions(chat_id)
 
 
+@dp.callback_query_handler(lambda cb: cb.data.startswith("remove|"), state="*")
+async def remove_callback_handler(query: types.CallbackQuery, state):
+    _remove, *subs = query.data.split("|")
+    message = query.message
+    await state.finish()
+    await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+    await remove_subscriptions(message.chat.id, subs)
+    await query.answer()
+
+
 @dp.channel_post_handler(state=StateMachine.asked_remove)
 @dp.message_handler(state=StateMachine.asked_remove)
 async def remove_reply_handler(message: types.message, state):
     await remove_subscriptions(message.chat.id, message["text"].lower().split())
     await state.finish()
+
+
+def sub_list_keyboard(chat_id: int, command):
+    user_thresholds = subscriptions_manager.user_thresholds(chat_id)
+    subreddits = [subreddit for subreddit, threshold in user_thresholds]
+    subreddits.sort()
+    if not subreddits:
+        return types.ReplyKeyboardRemove()
+
+    if len(subreddits) > 40:
+        # TODO paginate
+        markup = types.ReplyKeyboardMarkup(
+            resize_keyboard=True, selective=True, one_time_keyboard=True
+        )
+        for row in chunks(subreddits):
+            markup.add(*row)
+        markup.add("/cancel")
+        return markup
+
+    markup = types.InlineKeyboardMarkup()
+    for row in chunks(subreddits):
+        button_row = [
+            types.InlineKeyboardButton(s, callback_data=f"{command}|{s}") for s in row
+        ]
+        markup.add(button_row)
+    markup.add(types.InlineKeyboardButton("cancel", callback_data="cancel"))
+    return markup
 
 
 @dp.channel_post_handler(Command(["remove"]))
@@ -206,17 +245,21 @@ async def handle_remove(message: types.message):
             )
         else:
             await StateMachine.asked_remove.set()
-            markup = types.ReplyKeyboardMarkup(
-                resize_keyboard=True, selective=True, one_time_keyboard=True
-            )
-            for row in chunks(subreddits):
-                markup.add(*row)
-            markup.add("/cancel")
+            markup = sub_list_keyboard(chat_id, "remove")
             await reply_wrapper(
                 message,
                 "Which subreddit would you like to unsubscribe from?",
                 reply_markup=markup,
             )
+
+
+@dp.callback_query_handler(lambda cb: cb.data.startswith("change_th|"))
+async def inline_change_handler(query: types.CallbackQuery):
+    _less, subreddit = query.data.split("|")
+    await change_threshold(
+        query.message.chat.id, subreddit, factor=1, original_message=query.message
+    )
+    await query.answer()  # send answer to close the rounding circle
 
 
 async def change_threshold(
@@ -231,7 +274,7 @@ async def change_threshold(
         )
         return
     new_monthly = round(current_monthly * factor)
-    if new_monthly == current_monthly:
+    if new_monthly == current_monthly and factor != 1:
         if factor > 1:
             new_monthly = current_monthly + 1
         else:
@@ -246,7 +289,7 @@ async def change_threshold(
         chat_id, subreddit, new_threshold, new_monthly
     )
     message_text = (
-        f"You will now receive on average about {format_period(new_monthly)} "
+        f"You will receive on average about {format_period(new_monthly)} "
         f"from {subreddit}, minimum score: {new_threshold}"
     )
     inline_keyboard = types.InlineKeyboardMarkup()
@@ -316,16 +359,12 @@ async def handle_change_threshold(message: types.message, factor: float):
                 "You are not subscribed to any subreddit, press /add to subscribe",
             )
         else:
-            if factor > 1:
+            if factor >= 1:
                 await StateMachine.asked_more.set()
+                markup = sub_list_keyboard(chat_id, "more")
             else:
                 await StateMachine.asked_less.set()
-            markup = types.ReplyKeyboardMarkup(
-                resize_keyboard=True, selective=True, one_time_keyboard=True
-            )
-            for row in chunks(subreddits):
-                markup.add(*row)
-            markup.add("/cancel")
+                markup = sub_list_keyboard(chat_id, "less")
 
             question_template = "From which subreddit would you like to get {} updates?"
             question = question_template.format("more" if factor > 1 else "fewer")
@@ -369,11 +408,12 @@ async def list_subscriptions(chat_id: int):
             )
             for sub, th, per_month in subscriptions
         )
+        markup = sub_list_keyboard(chat_id, "change_th")
         await send_message_wrapper(
             chat_id,
             f"You are currently subscribed to:\n\n{text_list}",
             parse_mode="Markdown",
-            reply_markup=types.ReplyKeyboardRemove(),
+            reply_markup=markup,
             disable_web_page_preview=True,
         )
     else:
