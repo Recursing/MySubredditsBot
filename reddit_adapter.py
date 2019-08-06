@@ -62,15 +62,25 @@ class InvalidAnswerFromEndpoint(Exception):
     pass
 
 
-async def get_posts_from_endpoint(endpoint: str) -> List[Dict]:
+async def get_posts_from_endpoint(endpoint: str, retry=True) -> List[Dict]:
     headers = {"user-agent": "my-subreddits-bot-0.1"}
     client = httpx.AsyncClient()
-    r = await client.get(endpoint, headers=headers)
+    try:
+        r = await client.get(endpoint, headers=headers, timeout=60)
+    except httpx.exceptions.ConnectTimeout:
+        if retry:
+            await get_posts_from_endpoint(endpoint, retry=False)
+        else:
+            return []
     try:
         r_json = r.json()
     except json.decoder.JSONDecodeError:
-        # TODO retry get
-        raise InvalidAnswerFromEndpoint(f"{endpoint} returned invalid json: {r.text}")
+        if retry:
+            await get_posts_from_endpoint(endpoint, retry=False)
+        else:
+            raise InvalidAnswerFromEndpoint(
+                f"{endpoint} returned invalid json: {r.text}"
+            )
     if "data" in r_json:
         posts = [p["data"] for p in r_json["data"]["children"] if p["kind"] == "t3"]
         if posts:
