@@ -6,10 +6,12 @@ from aiogram.dispatcher.filters import Command
 import subscriptions_manager
 import reddit_adapter
 import logging
+import re
+import httpx
 import time
 import asyncio
 import credentials
-from typing import List, Tuple
+from typing import List, Tuple, Callable
 
 # Enable logging
 logging.basicConfig(
@@ -37,44 +39,70 @@ async def reply_wrapper(message, *args, **kwargs):
     await send_message_wrapper(message.chat.id, *args, **kwargs)
 
 
+def catch_telegram_exceptions(func: Callable) -> Callable:
+    async def wrap(*args, **kwargs) -> bool:
+        try:
+            func(*args, **kwargs)
+            return True
+        except exceptions.Unauthorized as e:
+            chat_id = kwargs.get("chat_id") or args[0]
+            unsub_reasons = [
+                "chat not found",
+                "bot was blocked by the user",
+                "user is deactivated",
+                "chat not found",
+                "bot was kicked",
+            ]
+            if any(reason in str(e) for reason in unsub_reasons):
+                delete_user(chat_id)
+            else:
+                await log_exception(e, f"Failed to send {args} {kwargs}")
+        except exceptions.InlineKeyboardExpected as e:
+            if "reply_markup" in kwargs:
+                del kwargs["reply_markup"]
+                await send_message_wrapper(*args, **kwargs)
+            else:
+                raise e
+        except exceptions.MigrateToChat as e:
+            new_chat_id = e.migrate_to_chat_id
+            old_chat_id = kwargs.get("chat_id") or args[0]
+            for sub, th, pm in subscriptions_manager.user_subscriptions(old_chat_id):
+                subscriptions_manager.subscribe(new_chat_id, sub, th, pm)
+                subscriptions_manager.unsubscribe(old_chat_id, sub)
+        except exceptions.RetryAfter as e:
+            time_to_sleep = e.timeout + 1
+            time.sleep(time_to_sleep)
+        except (
+            exceptions.NotFound,
+            exceptions.RestartingTelegram,
+            exceptions.TelegramAPIError,
+        ) as e:
+            await log_exception(e, "Telegram down?")
+            time.sleep(60 * 30)  # Telegram down, sleep a while
+        return False
+
+    return wrap
+
+
+@catch_telegram_exceptions
 async def send_message_wrapper(*args, **kwargs):
-    try:
-        await bot.send_message(*args, **kwargs)
-    except exceptions.Unauthorized as e:
-        chat_id = kwargs.get("chat_id") or args[0]
-        unsub_reasons = [
-            "chat not found",
-            "bot was blocked by the user",
-            "user is deactivated",
-            "chat not found",
-            "bot was kicked",
-        ]
-        if any(reason in str(e) for reason in unsub_reasons):
-            delete_user(chat_id)
-        else:
-            await log_exception(e, f"Failed to send {args} {kwargs}")
-    except exceptions.InlineKeyboardExpected as e:
-        if "reply_markup" in kwargs:
-            del kwargs["reply_markup"]
-            await send_message_wrapper(*args, **kwargs)
-        else:
-            raise e
-    except exceptions.MigrateToChat as e:
-        new_chat_id = e.migrate_to_chat_id
-        old_chat_id = kwargs.get("chat_id") or args[0]
-        for sub, th, pm in subscriptions_manager.user_subscriptions(old_chat_id):
-            subscriptions_manager.subscribe(new_chat_id, sub, th, pm)
-            subscriptions_manager.unsubscribe(old_chat_id, sub)
-    except exceptions.RetryAfter as e:
-        time_to_sleep = e.timeout + 1
-        time.sleep(time_to_sleep)
-    except (
-        exceptions.NotFound,
-        exceptions.RestartingTelegram,
-        exceptions.TelegramAPIError,
-    ) as e:
-        await log_exception(e, "Telegram down?")
-        time.sleep(60 * 30)  # Telegram down, sleep a while
+    await bot.send_message(*args, **kwargs)
+
+
+@catch_telegram_exceptions
+async def send_media_wrapper(chat_id, url, caption, parse_mode):
+    assert contains_media(url)
+    image_extensions = ["jpg", "png"]
+    animation_extensions = ["gif", "gifv", "mp4"]
+    if "gfycat.com" in url:
+        url = get_gfycat_mp4_url(url)
+    headers = {"user-agent": "my-subreddits-bot-0.1"}
+    client = httpx.AsyncClient()
+    media = await client.get(url, headers=headers, timeout=60).read()
+    if any(url.endswith(e) for e in image_extensions):
+        bot.send_photo(chat_id, media, caption=caption, parse_mode=parse_mode)
+    if any(url.endswith(e) for e in animation_extensions):
+        bot.send_animation(chat_id, media, caption=caption, parse_mode=parse_mode)
 
 
 class StateMachine(StatesGroup):
@@ -449,17 +477,42 @@ async def handle_list(message: dict):
     await list_subscriptions(message["chat"]["id"])
 
 
+def get_gfycat_mp4_url(gfycat_url: str) -> str:
+    id_group = r"gfycat\.com\/(?:detail\/)?(\w+)"
+    gfyid = re.findall(id_group, gfycat_url)[0]
+    r = httpx.get(f"https://api.gfycat.com/v1/gfycats/{gfyid}")
+    urls = r.json()["gfyItem"]
+    return urls["mp4Url"]
+
+
+def contains_media(url: str) -> bool:
+    media_extensions = [".gif", ".jpg", ".png", ".mp4", ".gifv"]
+    if 2 <= len(url.split(".")[-1]) <= 4:
+        log_exception(Exception("Unknown extension"), url)
+    return "gfycat.com" in url or any(url.endswith(e) for e in media_extensions)
+
+
 async def send_post(chat_id: int, post):
-    if not subscriptions_manager.already_sent(chat_id, post["id"]):
-        # TODO: handle images and gifs
+    if subscriptions_manager.already_sent(chat_id, post["id"]):
+        return
+    # TODO: handle images and gifs
+    try:
         formatted_post = reddit_adapter.formatted_post(post)
-        try:
-            await send_message_wrapper(chat_id, formatted_post, parse_mode="HTML")
+        sent = False
+        if contains_media(post["url"]):
+            sent = await send_media_wrapper(
+                chat_id, post["url"], formatted_post, parse_mode="HTML"
+            )
+        else:
+            sent = await send_message_wrapper(
+                chat_id, formatted_post, parse_mode="HTML"
+            )
+        if sent:
             subscriptions_manager.mark_as_sent(chat_id, post["id"])
-        except Exception as e:
-            await log_exception(e, f"Failed to send {formatted_post} to {chat_id}")
-            # If I'm doing something wrong or telegram is down, at least wait a bit
-            time.sleep(60 * 2)
+    except Exception as e:
+        await log_exception(e, f"Failed to send {formatted_post} to {chat_id}")
+        # If I'm doing something wrong or telegram is down, at least wait a bit
+        time.sleep(60 * 2)
 
 
 async def send_subreddit_updates(subreddit: str):

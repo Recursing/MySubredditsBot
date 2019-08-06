@@ -37,6 +37,8 @@ def formatted_post(post: Dict) -> str:
         '{}: <a href="{}">{}</a> - <a href="https://www.reddit.com{}">'
         "{}+ Comments</a> - Posted {} ago\n\n{}"
     )
+    if len(post["selftext"]) > 990:
+        post["selftext"] = post["selftext"][:990] + "..."
     return template.format(
         sub,
         urllib.parse.quote(post["url"], safe="/:?="),
@@ -44,7 +46,7 @@ def formatted_post(post: Dict) -> str:
         permalink,
         comment_number,
         time_ago,
-        post["selftext"][:4000],
+        post["selftext"],
     )
 
 
