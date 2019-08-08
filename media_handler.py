@@ -10,6 +10,19 @@ ignore_extensions = ["vim", "html"]
 gfycat_domain = "gfycat.com"
 vreddit_domain = "v.redd.it"
 
+reddit_qualities = [
+    "DASH_720",
+    "DASH_480",
+    "DASH_360",
+    "DASH_1080",
+    "DASH_600_K",
+    "DASH_1_2_M",
+    "DASH_9_6_M",
+    "DASH_4_8_M",
+    "DASH_2_4_M",
+    "DASH_240",
+]
+
 
 def get_media_type(url: str) -> str:
     extension = url.split(".")[-1].split("?")[0]
@@ -30,7 +43,7 @@ async def send_media(bot: Bot, chat_id: int, url: str, caption: str, parse_mode:
     if gfycat_domain in url:
         url = await get_gfycat_mp4_url(url)
     elif vreddit_domain in url:
-        url = url.rstrip("/") + "/DASH_480?source=fallback"
+        url = await get_reddit_mp4_url(url)
 
     if media_type == "IMG":
         try:
@@ -62,6 +75,15 @@ async def get_gfycat_mp4_url(gfycat_url: str) -> str:
     r = await client.get(f"https://api.gfycat.com/v1/gfycats/{gfyid}", timeout=60)
     urls = r.json()["gfyItem"]
     return urls["mp4Url"]
+
+
+async def get_reddit_mp4_url(reddit_url: str) -> str:
+    url = reddit_url.rstrip("/")
+    mpd = url + "/DASHPlaylist.mpd"
+    client = httpx.AsyncClient()
+    r = await client.get(mpd, timeout=60)
+    quality = next((q for q in reddit_qualities if q in r.text), "DASH_480")
+    return f"{url}/{quality}?source=fallback"
 
 
 async def contains_media(url: str) -> bool:

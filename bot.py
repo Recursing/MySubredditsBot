@@ -90,7 +90,7 @@ async def send_message_wrapper(*args, **kwargs):
 
 @catch_telegram_exceptions
 async def send_media_wrapper(chat_id: int, url: str, caption: str, parse_mode: str):
-    media_handler.send_media(bot, chat_id, url, caption, parse_mode)
+    await media_handler.send_media(bot, chat_id, url, caption, parse_mode)
 
 
 class StateMachine(StatesGroup):
