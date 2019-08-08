@@ -20,6 +20,19 @@ def format_time_delta(delta_seconds: int) -> str:
         return f"{seconds}s"
 
 
+def markdown_to_html(source: str) -> str:
+    replace_map = {"<": "&lt;", ">": "&gt;", "&": "&amp;"}
+    for k, v in replace_map.items():
+        source = source.replace(k, v)
+    bold_md = r"\*\*(.*?)\*\*"
+    bold_html = r"<b>\1</b>"
+    link_md = r"\[(.*?)\]\((.*?)\)"
+    link_html = r"<a href=\1>\2</a>"
+    source = re.sub(bold_md, bold_html, source)
+    source = re.sub(link_md, link_html, source)
+    return source
+
+
 def formatted_post(post: Dict) -> str:
     """
        TODO: maybe show score and threshold, and subreddit in bold
@@ -39,6 +52,7 @@ def formatted_post(post: Dict) -> str:
     )
     if len(post["selftext"]) > 990:
         post["selftext"] = post["selftext"][:990] + "..."
+    post["selftext"] = markdown_to_html(post["selftext"])
     return template.format(
         sub,
         urllib.parse.quote(post["url"], safe="/:?="),
