@@ -5,9 +5,8 @@ from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.dispatcher.filters import Command
 import subscriptions_manager
 import reddit_adapter
+import media_handler
 import logging
-import re
-import httpx
 import time
 import asyncio
 import credentials
@@ -91,29 +90,7 @@ async def send_message_wrapper(*args, **kwargs):
 
 @catch_telegram_exceptions
 async def send_media_wrapper(chat_id: int, url: str, caption: str, parse_mode: str):
-    assert await contains_media(url)
-    image_extensions = ["jpg", "png"]
-    animation_extensions = ["gif", "gifv", "mp4"]
-    url = url.replace("https:", "http:")
-    if "gfycat.com" in url:
-        url = await get_gfycat_mp4_url(url)
-    elif any(url.endswith(e) for e in image_extensions):
-        try:
-            await bot.send_photo(chat_id, url, caption=caption, parse_mode=parse_mode)
-        except (exceptions.PhotoDimensions, exceptions.WrongFileIdentifier):
-            print("WrongFileIdentifier", url)
-            await bot.send_message(chat_id, caption, parse_mode=parse_mode)
-    elif any(url.endswith(e) for e in animation_extensions):
-        try:
-            await bot.send_animation(
-                chat_id,
-                url.replace(".gifv", ".mp4"),
-                caption=caption,
-                parse_mode=parse_mode,
-            )
-        except exceptions.WrongFileIdentifier:
-            print("WrongFileIdentifier", url)
-            await bot.send_message(chat_id, caption, parse_mode=parse_mode)
+    media_handler.send_media(bot, chat_id, url, caption, parse_mode)
 
 
 class StateMachine(StatesGroup):
@@ -488,24 +465,6 @@ async def handle_list(message: dict):
     await list_subscriptions(message["chat"]["id"])
 
 
-async def get_gfycat_mp4_url(gfycat_url: str) -> str:
-    id_group = r"gfycat\.com\/(?:detail\/)?(\w+)"
-    gfyid = re.findall(id_group, gfycat_url)[0]
-    client = httpx.AsyncClient()
-    r = await client.get(f"https://api.gfycat.com/v1/gfycats/{gfyid}", timeout=60)
-    urls = r.json()["gfyItem"]
-    return urls["mp4Url"]
-
-
-async def contains_media(url: str) -> bool:
-    media_extensions = [".gif", ".jpg", ".png", ".mp4", ".gifv"]
-    known_extensions = [".html"] + media_extensions
-    extension = "." + url.split(".")[-1]
-    if 2 <= len(extension) <= 4 and extension not in known_extensions:
-        await log_exception(Exception("Unknown extension"), url)
-    return "gfycat.com" in url or any(url.endswith(e) for e in media_extensions)
-
-
 async def send_post(chat_id: int, post):
     if subscriptions_manager.already_sent(chat_id, post["id"]):
         return
@@ -513,7 +472,7 @@ async def send_post(chat_id: int, post):
     try:
         formatted_post = reddit_adapter.formatted_post(post)
         sent = False
-        if await contains_media(post["url"]):
+        if await media_handler.contains_media(post["url"]):
             sent = await send_media_wrapper(
                 chat_id, post["url"], formatted_post, parse_mode="HTML"
             )
