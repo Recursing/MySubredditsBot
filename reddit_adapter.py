@@ -21,15 +21,14 @@ def format_time_delta(delta_seconds: int) -> str:
 
 
 def markdown_to_html(source: str) -> str:
-    replace_map = {"&": "&amp;", "<": "&lt;", ">": "&gt;"}
-    for k, v in replace_map.items():
-        source = source.replace(k, v)
+    print(source)
     bold_md = r"\*\*(.*?)\*\*"
     bold_html = r"<b>\1</b>"
     link_md = r"\[(.*?)\]\((.*?)\)"
-    link_html = r"<a href=\2>\1</a>"
+    link_html = r'<a href="\2">\1</a>'
     source = re.sub(bold_md, bold_html, source)
     source = re.sub(link_md, link_html, source)
+    print(source)
     return source
 
 
