@@ -36,7 +36,7 @@ def get_media_type(url: str) -> str:
 
 
 async def send_media(bot: Bot, chat_id: int, url: str, caption: str, parse_mode: str):
-    assert contains_media(url)
+    assert await contains_media(url)
     media_type = get_media_type(url)
 
     url = url.replace("https:", "http:")
