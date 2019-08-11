@@ -6,22 +6,54 @@ import httpx
 image_extensions = ["jpg", "png"]
 animation_extensions = ["gif", "gifv", "mp4"]
 document_extensions = ["pdf"]
-ignore_extensions = ["vim", "html"]
-gfycat_domain = "gfycat.com"
-vreddit_domain = "v.redd.it"
+ignore_extensions = ["vim", "html", "php"]
 
-reddit_qualities = [
-    "DASH_720",
-    "DASH_480",
-    "DASH_360",
-    "DASH_1080",
-    "DASH_600_K",
-    "DASH_1_2_M",
-    "DASH_9_6_M",
-    "DASH_4_8_M",
-    "DASH_2_4_M",
-    "DASH_240",
-]
+
+async def get_streamable_mp4_url(streamable_url: str) -> str:
+    url_pattern = r"https://[a-z\-]+\.streamable\.com/video/mp4/.*?\.mp4\?token=.*?&amp;expires=\d+"
+    client = httpx.AsyncClient()
+    r = await client.get(streamable_url, timeout=60)
+    match = re.search(url_pattern, r.text, re.MULTILINE)
+    if match:
+        return match.group()
+    raise Exception(f"STREAMABLE URL NOT FOUND IN {streamable_url}")
+
+
+async def get_gfycat_mp4_url(gfycat_url: str) -> str:
+    id_group = r"gfycat\.com\/(?:detail\/)?(\w+)"
+    gfyid = re.findall(id_group, gfycat_url)[0]
+    client = httpx.AsyncClient()
+    r = await client.get(f"https://api.gfycat.com/v1/gfycats/{gfyid}", timeout=60)
+    urls = r.json()["gfyItem"]
+    return urls["mp4Url"]
+
+
+async def get_reddit_mp4_url(reddit_url: str) -> str:
+    reddit_qualities = [
+        "DASH_720",
+        "DASH_480",
+        "DASH_360",
+        "DASH_1080",
+        "DASH_600_K",
+        "DASH_1_2_M",
+        "DASH_9_6_M",
+        "DASH_4_8_M",
+        "DASH_2_4_M",
+        "DASH_240",
+    ]
+    url = reddit_url.rstrip("/")
+    mpd = url + "/DASHPlaylist.mpd"
+    client = httpx.AsyncClient()
+    r = await client.get(mpd, timeout=60)
+    quality = next((q for q in reddit_qualities if q in r.text), "DASH_480")
+    return f"{url}/{quality}?source=fallback"
+
+
+video_scrapers = {
+    "gfycat.com": get_gfycat_mp4_url,
+    "v.redd.it": get_reddit_mp4_url,
+    "streamable.com": get_streamable_mp4_url,
+}
 
 
 def get_media_type(url: str) -> str:
@@ -30,7 +62,7 @@ def get_media_type(url: str) -> str:
         return "IMG"
     if extension in animation_extensions:
         return "VID"
-    if gfycat_domain in url or vreddit_domain in url:
+    if any(domain in url for domain in video_scrapers):
         return "VID"
     return ""
 
@@ -40,10 +72,9 @@ async def send_media(bot: Bot, chat_id: int, url: str, caption: str, parse_mode:
     media_type = get_media_type(url)
 
     url = url.replace("https:", "http:")
-    if gfycat_domain in url:
-        url = await get_gfycat_mp4_url(url)
-    elif vreddit_domain in url:
-        url = await get_reddit_mp4_url(url)
+    for domain, scraper in video_scrapers.items():
+        if domain in url:
+            url = await scraper(url)
 
     if media_type == "IMG":
         try:
@@ -66,24 +97,6 @@ async def send_media(bot: Bot, chat_id: int, url: str, caption: str, parse_mode:
         except (exceptions.WrongFileIdentifier, exceptions.InvalidHTTPUrlContent):
             print("Error sending video from", url)
             await bot.send_message(chat_id, caption, parse_mode=parse_mode)
-
-
-async def get_gfycat_mp4_url(gfycat_url: str) -> str:
-    id_group = r"gfycat\.com\/(?:detail\/)?(\w+)"
-    gfyid = re.findall(id_group, gfycat_url)[0]
-    client = httpx.AsyncClient()
-    r = await client.get(f"https://api.gfycat.com/v1/gfycats/{gfyid}", timeout=60)
-    urls = r.json()["gfyItem"]
-    return urls["mp4Url"]
-
-
-async def get_reddit_mp4_url(reddit_url: str) -> str:
-    url = reddit_url.rstrip("/")
-    mpd = url + "/DASHPlaylist.mpd"
-    client = httpx.AsyncClient()
-    r = await client.get(mpd, timeout=60)
-    quality = next((q for q in reddit_qualities if q in r.text), "DASH_480")
-    return f"{url}/{quality}?source=fallback"
 
 
 async def contains_media(url: str) -> bool:
