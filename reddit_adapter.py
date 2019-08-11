@@ -21,12 +21,14 @@ def format_time_delta(delta_seconds: int) -> str:
 
 
 def markdown_to_html(source: str) -> str:
+    source = source.replace("&#x200B;", "")
     bold_md = r"\*\*(.*?)\*\*"
     bold_html = r"<b>\1</b>"
-    link_md = r"\[(.*?)\]\((.*?)\)"
+    # Careful not to nest bold and link
+    link_md = r"\[\*?\*?(.*?)\*?\*?\]\((.*?)\)"
     link_html = r'<a href="\2">\1</a>'
-    source = re.sub(bold_md, bold_html, source)
     source = re.sub(link_md, link_html, source)
+    source = re.sub(bold_md, bold_html, source)
     return source
 
 
