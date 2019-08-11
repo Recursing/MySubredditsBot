@@ -70,7 +70,7 @@ def catch_telegram_exceptions(func: Callable) -> Callable:
                 subscriptions_manager.unsubscribe(old_chat_id, sub)
         except exceptions.RetryAfter as e:
             time_to_sleep = e.timeout + 1
-            time.sleep(time_to_sleep)
+            await asyncio.sleep(time_to_sleep)
         except (
             exceptions.NotFound,
             exceptions.RestartingTelegram,
@@ -577,21 +577,21 @@ async def help_message(message: dict):
 
 
 async def send_updates(refresh_period=15 * 60):
+    print("sending updates... ", end="")
     subreddits = subscriptions_manager.all_subreddits()
     subreddits.sort()
     if len(subreddits) == 0:
         await asyncio.sleep(10)
     for subreddit in subreddits:
         sleep_time = refresh_period / len(subreddits)
-        print(f"Tracking {len(subreddits)} sleeping for {sleep_time}")
+        # print(f"Tracking {len(subreddits)} sleeping for {sleep_time}")
         await asyncio.sleep(sleep_time)
         try:
-            print(f"Sending updates for subreddit {subreddit}")
             await send_subreddit_updates(subreddit)
         except Exception as e:
             await log_exception(e, f"Exception while sending {subreddit}")
 
-    logger.info("Sent updates")
+    print("Sent updates")
 
 
 async def check_exceptions(refresh_period=24 * 60 * 60):
@@ -653,6 +653,7 @@ def format_traceback(e: Exception) -> str:
 
 async def log_exception(e: Exception, message: str):
     formatted_traceback = format_traceback(e)
+    print(message)
     logger.error(message, exc_info=True)
     logger.error(formatted_traceback)
     try:
