@@ -15,12 +15,12 @@ async def get_streamable_mp4_url(streamable_url: str) -> str:
     r = await client.get(streamable_url, timeout=60)
     match = re.search(url_pattern, r.text, re.MULTILINE)
     if match:
-        return match.group()
+        return match.group().replace("&amp;", "&")
     raise Exception(f"STREAMABLE URL NOT FOUND IN {streamable_url}")
 
 
 async def get_gfycat_mp4_url(gfycat_url: str) -> str:
-    id_group = r"gfycat\.com\/(?:detail\/)?(\w+)"
+    id_group = r"gfycat\.com\/(?:gifs\/)?(?:detail\/)?(\w+)"
     gfyid = re.findall(id_group, gfycat_url)[0]
     client = httpx.AsyncClient()
     r = await client.get(f"https://api.gfycat.com/v1/gfycats/{gfyid}", timeout=60)
