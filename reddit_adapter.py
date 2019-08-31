@@ -21,7 +21,7 @@ def format_time_delta(delta_seconds: int) -> str:
 
 
 def markdown_to_html(source: str) -> str:
-    source = source.replace("&#x200B;", "")
+    source = source.replace("&amp;#x200B;", "").replace("&amp;nbsp;", " ")
     bold_md = r"\*\*(.*?)\*\*"
     bold_html = r"<b>\1</b>"
     # Careful not to nest bold and link
@@ -98,7 +98,7 @@ async def get_posts_from_endpoint(endpoint: str, retry=True) -> List[Dict]:
             return await get_posts_from_endpoint(endpoint, retry=False)
         else:
             raise InvalidAnswerFromEndpoint(
-                f"{endpoint} returned invalid json: {r.text}"
+                f"{endpoint} returned invalid json: {r.text[:100]}"
             )
     if "data" in r_json:
         posts = [p["data"] for p in r_json["data"]["children"] if p["kind"] == "t3"]
