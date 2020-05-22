@@ -1,16 +1,40 @@
-import traceback
-from aiogram import Bot, Dispatcher, executor, types, exceptions
-from aiogram.contrib.fsm_storage.memory import MemoryStorage
-from aiogram.dispatcher.filters.state import State, StatesGroup
-from aiogram.dispatcher.filters import Command
-import subscriptions_manager
-import reddit_adapter
-import media_handler
+import asyncio
 import logging
 import time
-import asyncio
+import traceback
+import tracemalloc
+from datetime import datetime
+from random import shuffle
+from typing import Callable, List, Optional
+
+from aiogram import Bot, Dispatcher, exceptions, executor, types
+from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from aiogram.dispatcher.filters import Command
+from aiogram.dispatcher.filters.state import State, StatesGroup
+
 import credentials
-from typing import List, Tuple, Callable
+import media_handler
+import reddit_adapter
+import subscriptions_manager
+
+tracemalloc.start()
+
+
+# :(((
+BANNED = {
+    783219617,
+    686522367,
+    457538401,
+    765120636,
+    782767735,
+    1003294400,
+    -395678896,
+    347883772,
+    25897720,
+    691437317,
+    833945522,
+    -1001229267832,
+}
 
 # Enable logging
 logging.basicConfig(
@@ -29,7 +53,7 @@ dp = Dispatcher(bot, storage=MemoryStorage())
 
 def delete_user(chat_id):
     logger.warning(f"Unsubscribing user {chat_id}")
-    for sub, _th, _pm in subscriptions_manager.user_subscriptions(chat_id):
+    for sub in subscriptions_manager.user_subreddits(chat_id):
         subscriptions_manager.unsubscribe(chat_id, sub)
 
 
@@ -43,7 +67,7 @@ def catch_telegram_exceptions(func: Callable) -> Callable:
         try:
             await func(*args, **kwargs)
             return True
-        except exceptions.Unauthorized as e:
+        except (exceptions.Unauthorized, exceptions.ChatNotFound) as e:
             chat_id = kwargs.get("chat_id") or args[0]
             unsub_reasons = [
                 "chat not found",
@@ -52,7 +76,7 @@ def catch_telegram_exceptions(func: Callable) -> Callable:
                 "chat not found",
                 "bot was kicked",
             ]
-            if any(reason in str(e) for reason in unsub_reasons):
+            if any(reason in str(e).lower() for reason in unsub_reasons):
                 delete_user(chat_id)
             else:
                 await log_exception(e, f"Failed to send {args} {kwargs}")
@@ -65,12 +89,14 @@ def catch_telegram_exceptions(func: Callable) -> Callable:
         except exceptions.MigrateToChat as e:
             new_chat_id = e.migrate_to_chat_id
             old_chat_id = kwargs.get("chat_id") or args[0]
-            for sub, th, pm in subscriptions_manager.user_subscriptions(old_chat_id):
-                subscriptions_manager.subscribe(new_chat_id, sub, th, pm)
+            for sub, pm in subscriptions_manager.user_subscriptions(old_chat_id):
+                subscriptions_manager.subscribe(new_chat_id, sub, pm)
                 subscriptions_manager.unsubscribe(old_chat_id, sub)
         except exceptions.RetryAfter as e:
             time_to_sleep = e.timeout + 1
             await asyncio.sleep(time_to_sleep)
+        except exceptions.NetworkError:
+            await asyncio.sleep(60)
         except (
             exceptions.NotFound,
             exceptions.RestartingTelegram,
@@ -122,25 +148,26 @@ async def inline_cancel_handler(query: types.CallbackQuery, state):
     )
 
 
-async def get_threshold(sub: str, monthly_rank: int) -> Tuple[int, str]:
+async def get_posts_error(sub: str, monthly_rank: int) -> Optional[str]:
     if not reddit_adapter.valid_subreddit(sub):
-        return 0, f"{sub} is not a valid subreddit name"
+        return f"{sub} is not a valid subreddit name"
     try:
-        return await reddit_adapter.get_threshold(sub, monthly_rank), ""
-    except reddit_adapter.SubredditEmpty:
-        return 0, f"r/{sub} does not exist or is empty"
+        posts = await reddit_adapter.get_posts(sub, monthly_rank)
+        if posts:
+            return None
+        return f"r/{sub} does not exist or is empty or something"
     except reddit_adapter.SubredditBanned:
-        return 0, f"r/{sub} has been banned"
+        return f"r/{sub} has been banned"
     except reddit_adapter.SubredditPrivate:
-        return 0, f"r/{sub} is private"
+        return f"r/{sub} is private"
 
 
 async def add_subscription(chat_id: int, sub: str) -> bool:
     monthly_rank = 31
-    threshold, error = await get_threshold(sub, monthly_rank)
+    error = await get_posts_error(sub, monthly_rank)
     if error:
         await send_message_wrapper(chat_id, error)
-    if not subscriptions_manager.subscribe(chat_id, sub, threshold, monthly_rank):
+    if not subscriptions_manager.subscribe(chat_id, sub, monthly_rank):
         await send_message_wrapper(chat_id, f"You are already subscribed to {sub}")
         return False
     return True
@@ -149,14 +176,14 @@ async def add_subscription(chat_id: int, sub: str) -> bool:
 async def add_subscriptions(chat_id: int, subs: List[str]):
     if len(subs) > 5:
         await send_message_wrapper(
-            chat_id, f"Can't subscribe to more than 5 subreddits per message"
+            chat_id, "Can't subscribe to more than 5 subreddits per message"
         )
         return
     for sub in subs:
         if subscriptions_manager.is_subscribed(chat_id, sub):
             await send_message_wrapper(chat_id, f"You are already subscribed to {sub}")
             return
-        _th, err = await get_threshold(sub, 31)
+        err = await get_posts_error(sub, 31)
         if err:
             await send_message_wrapper(chat_id, err)
             return
@@ -166,12 +193,14 @@ async def add_subscriptions(chat_id: int, subs: List[str]):
     await send_message_wrapper(chat_id, f"You have subscribed to {', '.join(subs)}")
     await list_subscriptions(chat_id)
     for sub in subs:
-        await send_subreddit_updates(sub)
+        await send_subscription_updates(sub, chat_id, 31)
 
 
 @dp.channel_post_handler(state=StateMachine.asked_add)
 @dp.message_handler(state=StateMachine.asked_add)
 async def add_reply_handler(message: types.Message, state):
+    if not message.text or message.text is None:
+        return
     subs = message.text.lower().replace(",", " ").replace("+", " ").split()
     await add_subscriptions(message.chat.id, subs)
     await state.finish()
@@ -184,6 +213,8 @@ async def handle_add(message: types.Message):
         Subscribe to new space/comma separated subreddits
     """
     chat_id = message["chat"]["id"]
+    if chat_id in BANNED:
+        return
     text = message["text"].lower().strip()
 
     if len(text.split()) > 1:
@@ -217,6 +248,8 @@ async def remove_subscriptions(chat_id: int, subs: List[str]):
 
 @dp.callback_query_handler(lambda cb: cb.data.startswith("remove|"), state="*")
 async def remove_callback_handler(query: types.CallbackQuery, state):
+    if not query.data or query.data is None:
+        return
     _remove, *subs = query.data.split("|")
     message = query.message
     await state.finish()
@@ -233,13 +266,12 @@ async def remove_reply_handler(message: types.Message, state):
 
 
 def sub_list_keyboard(chat_id: int, command):
-    user_thresholds = subscriptions_manager.user_thresholds(chat_id)
-    subreddits = [subreddit for subreddit, threshold in user_thresholds]
-    subreddits.sort()
+    subreddits = subscriptions_manager.user_subreddits(chat_id)
+    subreddits.sort(reverse=True)
     if not subreddits:
         return types.ReplyKeyboardRemove()
 
-    if len(subreddits) >= 10:
+    if len(subreddits) >= 19:
         # TODO paginate
         reply_markup = types.ReplyKeyboardMarkup(
             resize_keyboard=True, selective=True, one_time_keyboard=True
@@ -270,8 +302,7 @@ async def handle_remove(message: types.Message):
     if len(text.split()) > 1:
         await remove_subscriptions(chat_id, text.split()[1:])
     else:
-        user_thresholds = subscriptions_manager.user_thresholds(chat_id)
-        subreddits = [subreddit for subreddit, threshold in user_thresholds]
+        subreddits = subscriptions_manager.user_subreddits(chat_id)
         subreddits.sort()
         if not subreddits:
             await reply_wrapper(
@@ -290,6 +321,8 @@ async def handle_remove(message: types.Message):
 
 @dp.callback_query_handler(lambda cb: cb.data.startswith("change_th|"))
 async def inline_change_handler(query: types.CallbackQuery):
+    if not query.data or query.data is None:
+        return
     _less, subreddit = query.data.split("|")
     await change_threshold(
         query.message.chat.id, subreddit, factor=1, original_message=query.message
@@ -313,18 +346,18 @@ async def change_threshold(
             new_monthly = current_monthly + 1
         else:
             new_monthly = current_monthly - 1
-    if new_monthly > 300:
-        new_monthly = 300
+    if new_monthly > 1500:
+        new_monthly = 1500
     if new_monthly < 1:
         await send_message_wrapper(chat_id=chat_id, text="Press /remove to unsubscribe")
         return
-    new_threshold = await reddit_adapter.get_threshold(subreddit, new_monthly)
-    subscriptions_manager.update_threshold(
-        chat_id, subreddit, new_threshold, new_monthly
-    )
+    err = await get_posts_error(subreddit, new_monthly)
+    if err:
+        await send_message_wrapper(chat_id=chat_id, text=err)
+        return
+    subscriptions_manager.update_per_month(chat_id, subreddit, new_monthly)
     message_text = (
-        f"You will receive on average about {format_period(new_monthly)} "
-        f"from {subreddit}, minimum score: {new_threshold}"
+        f"You will receive about {format_period(new_monthly)} " f"from {subreddit}"
     )
     inline_keyboard = types.InlineKeyboardMarkup()
     inline_keyboard.row(
@@ -345,6 +378,8 @@ async def change_threshold(
 
 @dp.callback_query_handler(lambda cb: cb.data.startswith("less|"))
 async def inline_less_handler(query: types.CallbackQuery):
+    if not query.data or query.data is None:
+        return
     _less, subreddit = query.data.split("|")
     await change_threshold(
         query.message.chat.id, subreddit, factor=1 / 1.5, original_message=query.message
@@ -355,6 +390,8 @@ async def inline_less_handler(query: types.CallbackQuery):
 @dp.callback_query_handler(lambda cb: cb.data.startswith("more|"))
 async def inline_more_handler(query: types.CallbackQuery):
     await query.answer()  # send answer to close the rounding circle
+    if not query.data or query.data is None:
+        return
     _more, subreddit = query.data.split("|")
     await change_threshold(
         query.message.chat.id, subreddit, factor=1.5, original_message=query.message
@@ -384,8 +421,7 @@ async def handle_change_threshold(message: types.Message, factor: float):
     if len(text.split()) > 1:
         await change_threshold(chat_id, text.split(None, 1)[1], factor=factor)
     else:
-        user_thresholds = subscriptions_manager.user_thresholds(chat_id)
-        subreddits = [subreddit for subreddit, threshold in user_thresholds]
+        subreddits = subscriptions_manager.user_subreddits(chat_id)
         subreddits.sort()
         if not subreddits:
             await reply_wrapper(
@@ -417,10 +453,10 @@ async def handle_mo4r(message: types.Message):
 
 def format_period(per_month):
     if per_month > 31:
-        return f"{per_month/31:.1f} messages per day"
-    elif per_month == 31:
-        return f"one message every day"
-    return f"one message every {31/per_month:.1f} days"
+        return f"{per_month // 31} messages per day"
+    if per_month == 31:
+        return "one message every day"
+    return f"one message every {31 / per_month:.1f} days"
 
 
 @dp.channel_post_handler(Command(["less", "fewer"]))
@@ -438,9 +474,9 @@ async def list_subscriptions(chat_id: int):
         text_list = "\n\n".join(
             (
                 f"[{sub}](https://www.reddit.com/r/{sub}), "
-                f"about {format_period(per_month)}, > {th} upvotes"
+                f"about {format_period(per_month)}"
             )
-            for sub, th, per_month in subscriptions
+            for sub, per_month in subscriptions
         )
         markup = sub_list_keyboard(chat_id, "change_th")
         await send_message_wrapper(
@@ -469,6 +505,7 @@ async def send_post(chat_id: int, post):
     if subscriptions_manager.already_sent(chat_id, post["id"]):
         return
     # TODO: handle images and gifs
+    print(f"sending posts {post['id']} to {chat_id}")
     try:
         formatted_post = reddit_adapter.formatted_post(post)
         sent = False
@@ -488,49 +525,41 @@ async def send_post(chat_id: int, post):
         await asyncio.sleep(60 * 2)
 
 
-async def send_subreddit_updates(subreddit: str):
-    subscriptions = subscriptions_manager.sub_followers(subreddit)
-    sent_to_chat_id = {chat_id: 0 for (chat_id, _t, _p) in subscriptions}
+async def send_subscription_updates(subreddit: str, chat_id: int, per_month: int):
+    # Don't send more than 4 messages in a row to the same chat_id, to avoid flooding
     try:
-        try:
-            post_iterator = await reddit_adapter.top_day_posts(subreddit)
-        except reddit_adapter.SubredditEmpty:  # No posts today
-            post_iterator = []
-        if any(threshold <= 50 for chat_id, threshold, _pm in subscriptions):
+        post_iterator = await reddit_adapter.get_posts(subreddit, per_month)
+        if per_month > 2000:
             post_iterator += await reddit_adapter.new_posts(subreddit)
+        # Don't send more than 4 messages "at once", to prevent flooding
+        sent_posts = 0
         for post in post_iterator:
-            # cur_timestamp = datetime.now().timestamp()
-            # subscriptions_manager.store_post(post.id, post.title, post.score,
-            #                                 post.created_utc, cur_timestamp, subreddit)
-            for chat_id, threshold, _pm in subscriptions:
-                if post["score"] > threshold and sent_to_chat_id[chat_id] < 2:
-                    await send_post(chat_id, post)
-                    sent_to_chat_id[chat_id] += 1
+            if post["created_utc"] < 1590051621:
+                continue
+            if subscriptions_manager.already_sent(chat_id, post["id"]):
+                continue
+            sent_posts += 1
+            if sent_posts > 4:
+                break
+            await send_post(chat_id, post)
     except reddit_adapter.SubredditBanned:
-        for chat_id, _threshold, _pm in subscriptions + [(credentials.ADMIN_ID, 0, 0)]:
-            if not subscriptions_manager.already_sent_exception(
-                chat_id, subreddit, "banned"
-            ):
-                await send_message_wrapper(chat_id, f"r/{subreddit} has been banned")
-                subscriptions_manager.mark_exception_as_sent(
-                    chat_id, subreddit, "banned"
-                )
-            subscriptions_manager.unsubscribe(chat_id, subreddit)
+        if not subscriptions_manager.already_sent_exception(
+            chat_id, subreddit, "banned"
+        ):
+            await send_message_wrapper(chat_id, f"r/{subreddit} has been banned")
+            subscriptions_manager.mark_exception_as_sent(chat_id, subreddit, "banned")
+        subscriptions_manager.unsubscribe(chat_id, subreddit)
     except reddit_adapter.SubredditPrivate:
-        for chat_id, _threshold, _pm in subscriptions + [(credentials.ADMIN_ID, 0, 0)]:
-            if not subscriptions_manager.already_sent_exception(
-                chat_id, subreddit, "private"
-            ):
-                await send_message_wrapper(
-                    chat_id, f"r/{subreddit} has been made private"
-                )
-                subscriptions_manager.mark_exception_as_sent(
-                    chat_id, subreddit, "private"
-                )
-            subscriptions_manager.unsubscribe(chat_id, subreddit)
-
+        if not subscriptions_manager.already_sent_exception(
+            chat_id, subreddit, "private"
+        ):
+            await send_message_wrapper(chat_id, f"r/{subreddit} has been made private")
+            subscriptions_manager.mark_exception_as_sent(chat_id, subreddit, "private")
+        subscriptions_manager.unsubscribe(chat_id, subreddit)
     except Exception as e:
-        await log_exception(e, f"send_subreddit_updates({subreddit})")
+        await log_exception(
+            e, f"send_subscription_updates({subreddit}, {chat_id}, {per_month})"
+        )
         time.sleep(60 * 2)
 
 
@@ -577,21 +606,31 @@ async def help_message(message: dict):
 
 
 async def send_updates(refresh_period=15 * 60):
-    print("sending updates... ", end="")
-    subreddits = subscriptions_manager.all_subreddits()
-    subreddits.sort()
-    if len(subreddits) == 0:
+    print(datetime.now(), "sending updates...")
+    subscriptions = subscriptions_manager.get_subscriptions()
+    shuffle(subscriptions)
+    print(subscriptions)
+    sleep_time = refresh_period / len(subscriptions)
+    print("sleep time:", sleep_time)
+    if len(subscriptions) == 0:
         await asyncio.sleep(10)
-    for subreddit in subreddits:
-        sleep_time = refresh_period / len(subreddits)
-        # print(f"Tracking {len(subreddits)} sleeping for {sleep_time}")
-        await asyncio.sleep(sleep_time)
-        try:
-            await send_subreddit_updates(subreddit)
-        except Exception as e:
-            await log_exception(e, f"Exception while sending {subreddit}")
-
-    print("Sent updates")
+    last_time = time.time()
+    tasks = []
+    batch_size = 10
+    for chat_id, subreddit, per_month in subscriptions:
+        tasks.append(send_subscription_updates(subreddit, chat_id, per_month))
+        if len(tasks) >= batch_size:
+            assert len(tasks) == batch_size
+            tasks.append(asyncio.sleep(sleep_time * batch_size))
+            await asyncio.wait(tasks)
+            tasks = []
+            print(
+                f"Managing {len(subscriptions)}: sleeping for "
+                f"{sleep_time * batch_size:.2f} slept for {time.time() - last_time:.2f}"
+            )
+            last_time = time.time()
+    await asyncio.gather(*tasks)
+    print(datetime.now(), "Sent updates")
 
 
 async def check_exceptions(refresh_period=24 * 60 * 60):
@@ -602,47 +641,30 @@ async def check_exceptions(refresh_period=24 * 60 * 60):
     try:
         for sub in unavailable_subs:
             try:
-                reddit_adapter.new_posts(sub)
+                await reddit_adapter.new_posts(sub)
             except (reddit_adapter.SubredditPrivate, reddit_adapter.SubredditBanned):
                 continue
             old_subscribers = subscriptions_manager.get_old_subscribers(sub)
             for chat_id in old_subscribers:
                 await add_subscription(chat_id, sub)
                 await send_message_wrapper(chat_id, f"{sub} is now available again")
+            subscriptions_manager.delete_exception(sub)
     except Exception as e:
         await log_exception(e, f"Exception while checking unavailability of {sub}")
     await asyncio.sleep(refresh_period)
 
 
-async def update_thresholds(refresh_period=36 * 60 * 60):
-    """
-        Update all upvote thresholds based on monthly number
-    """
-    subreddits = subscriptions_manager.all_subreddits()
-    if len(subreddits) == 0:
-        await asyncio.sleep(refresh_period)
-    for subreddit in subreddits:
-        for chat_id, old_threshold, per_month in subscriptions_manager.sub_followers(
-            subreddit
-        ):
-            new_threshold = await reddit_adapter.get_threshold(subreddit, per_month)
-            if new_threshold != old_threshold:
-                subscriptions_manager.update_threshold(
-                    chat_id, subreddit, new_threshold, per_month
-                )
-            await asyncio.sleep(2)
-    await asyncio.sleep(refresh_period)
-
-
 async def loop_forever(fun):
     while True:
-        await fun()
+        try:
+            await fun()
+        except Exception:
+            print("!!! Exception in loop_forever!")
 
 
-async def on_startup(dp):
+async def on_startup(_dispatcher):
     asyncio.create_task(loop_forever(send_updates))
     asyncio.create_task(loop_forever(check_exceptions))
-    asyncio.create_task(loop_forever(update_thresholds))
 
 
 def format_traceback(e: Exception) -> str:
@@ -653,14 +675,17 @@ def format_traceback(e: Exception) -> str:
 
 async def log_exception(e: Exception, message: str):
     formatted_traceback = format_traceback(e)
-    print(message)
+    print("Logging exception:", message, formatted_traceback)
     logger.error(message, exc_info=True)
     logger.error(formatted_traceback)
     try:
-        await bot.send_message(chat_id=credentials.ADMIN_ID, text=formatted_traceback)
+        await bot.send_message(
+            chat_id=credentials.ADMIN_ID, text=formatted_traceback[:2000]
+        )
         await bot.send_message(chat_id=credentials.ADMIN_ID, text=message)
-    except Exception:
-        pass
+    except Exception as e2:
+        print("*******Exception sending exception!!")
+        print(f"{e2!r}")
 
 
 if __name__ == "__main__":

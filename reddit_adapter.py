@@ -1,31 +1,35 @@
-import re
-import httpx
-import json
-import urllib.parse
 import asyncio
-from typing import List, Dict
+import re
+import urllib.parse
 from datetime import datetime
+from time import time
+from typing import Dict, List, Tuple, Union
+
+import httpx
+
+from bot import log_exception
 
 
 def format_time_delta(delta_seconds: int) -> str:
     delta_seconds = int(delta_seconds)
-    hours = delta_seconds // 3600
+    days = delta_seconds // (86400)
+    hours = (delta_seconds % 86400) // 3600
     minutes = (delta_seconds % 3600) // 60
     seconds = delta_seconds % 60
+    if days:
+        return f"{days}d {hours}h"
     if hours:
         return f"{hours}h {minutes}m"
-    elif minutes:
+    if minutes:
         return f"{minutes}m {seconds}s"
-    else:
-        return f"{seconds}s"
+    return f"{seconds}s"
 
 
 def markdown_to_html(source: str) -> str:
     source = source.replace("&amp;#x200B;", "").replace("&amp;nbsp;", " ")
     bold_md = r"\*\*(.*?)\*\*"
     bold_html = r"<b>\1</b>"
-    # Careful not to nest bold and link
-    link_md = r"\[\*?\*?(.*?)\*?\*?\]\((.*?)\)"
+    link_md = r"\[(.*?)]\((.*?)\)"
     link_html = r'<a href="\2">\1</a>'
     source = re.sub(link_md, link_html, source)
     source = re.sub(bold_md, bold_html, source)
@@ -47,17 +51,21 @@ def formatted_post(post: Dict) -> str:
 
     template = (
         '{}: <a href="{}">{}</a> - <a href="https://www.reddit.com{}">'
-        "{}+ Comments</a> - Posted {} ago\n\n{}"
+        "{}+ Comments</a> - +{} in {}\n\n{}"
     )
-    if len(post["selftext"]) > 990:
-        post["selftext"] = post["selftext"][:990] + "..."
+    if len(post["selftext"]) > 1100:
+        post["selftext"] = post["selftext"][:1000] + "..."
+
     post["selftext"] = markdown_to_html(post["selftext"])
+    if len(post["selftext"]) > 2000:
+        post["selftext"] = post["selftext"][:1900] + "..."
     return template.format(
         sub,
-        urllib.parse.quote(post["url"], safe="/:?="),
+        urllib.parse.quote(post["url"], safe="/:?=&#"),
         title,
         permalink,
         comment_number,
+        post["score"],
         time_ago,
         post["selftext"],
     )
@@ -71,69 +79,72 @@ class SubredditPrivate(Exception):
     pass
 
 
-class SubredditEmpty(Exception):
-    pass
-
-
 class InvalidAnswerFromEndpoint(Exception):
     pass
 
 
-async def get_posts_from_endpoint(endpoint: str, retry=True) -> List[Dict]:
+Post = Dict[str, Union[int, str]]
+CLIENT_SESSION = httpx.AsyncClient()
+TIMED_CACHE: Dict[str, Tuple[float, List[Post]]] = {}
+
+
+async def get_posts_from_endpoint(endpoint: str, retry=True) -> List[Post]:
+    if endpoint in TIMED_CACHE and TIMED_CACHE[endpoint][0] > time() - 600:
+        return TIMED_CACHE[endpoint][1]
     headers = {"user-agent": "my-subreddits-bot-0.1"}
-    client = httpx.AsyncClient()
+    r_json = None
     try:
-        r = await client.get(endpoint, headers=headers, timeout=60)
-    except httpx.exceptions.ConnectTimeout:
+        response = await CLIENT_SESSION.get(endpoint, headers=headers, timeout=60)
+        r_json = response.json()
+    except Exception as e:
+        log_exception(e, f"Exception getting endpoint {endpoint} {r_json} {e!r}")
         if retry:
-            await asyncio.sleep(2 * 60)
-            await get_posts_from_endpoint(endpoint, retry=False)
-        else:
-            return []
-    try:
-        r_json = dict(r.json())
-    except json.decoder.JSONDecodeError:
-        if retry:
-            await asyncio.sleep(2 * 60)
+            print("sleeping 60 seconds before retrying contacting reddit")
+            await asyncio.sleep(60)
             return await get_posts_from_endpoint(endpoint, retry=False)
-        else:
-            raise InvalidAnswerFromEndpoint(
-                f"{endpoint} returned invalid json: {r.text[:100]}"
-            )
+        raise InvalidAnswerFromEndpoint(f"{endpoint} returned invalid json")
+    if not isinstance(r_json, dict):
+        if retry:
+            print("sleeping 60 seconds before retrying contacting reddit")
+            await asyncio.sleep(60)
+            return await get_posts_from_endpoint(endpoint, retry=False)
+        raise InvalidAnswerFromEndpoint(f"{endpoint} returned invalid json")
     if "data" in r_json:
         posts = [p["data"] for p in r_json["data"]["children"] if p["kind"] == "t3"]
-        if posts:
-            return posts
-        else:
-            raise SubredditEmpty()
-    elif "error" in r_json:
-        if r_json["reason"] == "banned":
+        TIMED_CACHE[endpoint] = (time(), posts)
+        if len(TIMED_CACHE) > 100000:
+            TIMED_CACHE.clear()
+            TIMED_CACHE[endpoint] = (time(), posts)
+        return posts
+    if "error" in r_json and "reason" in r_json:
+        if r_json["reason"] == "banned" or r_json["reason"] == "quarantined":
             raise SubredditBanned()
         if r_json["reason"] == "private":
             raise SubredditPrivate()
     raise Exception(f"{r_json}")
 
 
-async def new_posts(subreddit: str, limit: int = 15) -> List[Dict]:
+async def new_posts(subreddit: str, limit: int = 30) -> List[Dict]:
     endpoint = f"https://www.reddit.com/r/{subreddit}/new.json?limit={limit}"
     return await get_posts_from_endpoint(endpoint)
 
 
-async def top_day_posts(subreddit: str, limit: int = 15) -> List[Dict]:
-    """
-        Returns top posts of this day on the subreddit
-        Returns empty list if subreddit doesn't exist
-    """
-    endpoint = f"https://www.reddit.com/r/{subreddit}/top.json?t=day&limit={limit}"
-    return await get_posts_from_endpoint(endpoint)
-
-
-async def get_threshold(subreddit: str, monthly_rank: int = 50) -> int:
-    endpoint = (
-        f"https://www.reddit.com/r/{subreddit}/top.json?t=month&limit={monthly_rank}"
-    )
-    posts = await get_posts_from_endpoint(endpoint)
-    return posts[-1]["score"]
+async def get_posts(subreddit: str, per_month: int) -> List[Dict]:
+    base = "https://www.reddit.com/r/"
+    if per_month < 99:
+        limit = per_month
+        time_period = "month"
+    elif per_month // 4 < 99:
+        limit = per_month // 4
+        time_period = "week"
+    elif per_month // 31 < 99:
+        limit = per_month // 31
+        time_period = "day"
+    else:
+        limit = min(per_month // (31 * 24), 99)
+        time_period = "hour"
+    endpoint = f"{base}{subreddit}/top.json?t={time_period}&limit={limit}"
+    return (await get_posts_from_endpoint(endpoint))[:limit]
 
 
 async def check_subreddit(subreddit: str):
