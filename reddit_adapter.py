@@ -6,7 +6,6 @@ from time import time
 from typing import Dict, List, Tuple, Union
 
 import httpx
-
 from bot import log_exception
 
 

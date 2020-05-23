@@ -534,7 +534,8 @@ async def send_subscription_updates(subreddit: str, chat_id: int, per_month: int
         # Don't send more than 4 messages "at once", to prevent flooding
         sent_posts = 0
         for post in post_iterator:
-            if post["created_utc"] < 1590051621:
+            # temp fix to prevent flooding after update, will remove in a week
+            if post["created_utc"] < 1590051621 - 86400:
                 continue
             if subscriptions_manager.already_sent(chat_id, post["id"]):
                 continue
@@ -682,7 +683,7 @@ async def log_exception(e: Exception, message: str):
         await bot.send_message(
             chat_id=credentials.ADMIN_ID, text=formatted_traceback[:2000]
         )
-        await bot.send_message(chat_id=credentials.ADMIN_ID, text=message)
+        await bot.send_message(chat_id=credentials.ADMIN_ID, text=message[:2000])
     except Exception as e2:
         print("*******Exception sending exception!!")
         print(f"{e2!r}")

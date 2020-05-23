@@ -1,10 +1,12 @@
 import asyncio
 import re
+from typing import Optional
 from urllib.parse import urlparse
 
 from aiogram import Bot, exceptions
 
 import httpx
+from bot import log_exception
 
 image_extensions = ["jpg", "png", "webp"]
 animation_extensions = ["gif", "gifv", "mp4", "mpeg"]
@@ -26,7 +28,7 @@ ignore_extensions = [
 CLIENT_SESSION = httpx.AsyncClient()
 
 
-async def get_streamable_mp4_url(streamable_url: str) -> str:
+async def get_streamable_mp4_url(streamable_url: str) -> Optional[str]:
     url_pattern = r"https://[a-z\-]+\.streamable\.com/video/mp4/.*?\.mp4\?token=.*?(?:&amp;|&)expires=\d+"
     r = await asyncio.wait_for(
         CLIENT_SESSION.get(streamable_url, timeout=60), timeout=100
@@ -34,25 +36,32 @@ async def get_streamable_mp4_url(streamable_url: str) -> str:
     match = re.search(url_pattern, r.text, re.MULTILINE)
     if match:
         return match.group().replace("&amp;", "&")
-    raise Exception(f"STREAMABLE URL NOT FOUND IN {streamable_url}")
+
+    log_exception(
+        Exception("STREAMABLE url not found"),
+        f"STREAMABLE URL NOT FOUND IN {streamable_url}",
+    )
+    return None
 
 
-async def get_gfycat_mp4_url(gfycat_url: str) -> str:
+async def get_gfycat_mp4_url(gfycat_url: str) -> Optional[str]:
     id_group = r"gfycat\.com\/(?:gifs\/)?(?:detail\/)?(?:amp\/)?(?:ru\/)?(?:fr\/)?(\w+)"
     gfyid = re.findall(id_group, gfycat_url)[0]
     r = await asyncio.wait_for(
         CLIENT_SESSION.get(f"https://api.gfycat.com/v1/gfycats/{gfyid}", timeout=60),
         timeout=100,
     )
-    r_json = r.json()
-    assert isinstance(r_json, dict)
-    if "gfyItem" not in r_json:
-        raise Exception(f"Invalid data from gfy {r.json()}")
-    urls = r_json["gfyItem"]
-    return urls["mp4Url"]
+    try:
+        r_json = r.json()
+        assert isinstance(r_json, dict)
+        urls = r_json["gfyItem"]
+        return urls["mp4Url"]
+    except Exception as e:
+        log_exception(e, f"Invalid data from gfycat {gfycat_url}")
+        return None
 
 
-async def get_reddit_mp4_url(reddit_url: str) -> str:
+async def get_reddit_mp4_url(reddit_url: str) -> Optional[str]:
     reddit_qualities = [
         "DASH_600_K",
         "DASH_1_2_M",
