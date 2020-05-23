@@ -6,7 +6,6 @@ from time import time
 from typing import Dict, List, Tuple, Union
 
 import httpx
-from bot import log_exception
 
 
 def format_time_delta(delta_seconds: int) -> str:
@@ -92,16 +91,16 @@ async def get_posts_from_endpoint(endpoint: str, retry=True) -> List[Post]:
         return TIMED_CACHE[endpoint][1]
     headers = {"user-agent": "my-subreddits-bot-0.1"}
     r_json = None
+    response = None
     try:
         response = await CLIENT_SESSION.get(endpoint, headers=headers, timeout=60)
         r_json = response.json()
     except Exception as e:
-        log_exception(e, f"Exception getting endpoint {endpoint} {r_json} {e!r}")
         if retry:
             print("sleeping 60 seconds before retrying contacting reddit")
             await asyncio.sleep(60)
             return await get_posts_from_endpoint(endpoint, retry=False)
-        raise InvalidAnswerFromEndpoint(f"{endpoint} returned invalid json")
+        raise InvalidAnswerFromEndpoint(f"{endpoint} returned invalid json {response}")
     if not isinstance(r_json, dict):
         if retry:
             print("sleeping 60 seconds before retrying contacting reddit")
