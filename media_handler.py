@@ -1,13 +1,12 @@
 import asyncio
 import re
-from functools import lru_cache
 from urllib.parse import urlparse
 
 from aiogram import Bot, exceptions
 
 import httpx
 
-image_extensions = ["jpg", "png"]
+image_extensions = ["jpg", "png", "webp"]
 animation_extensions = ["gif", "gifv", "mp4", "mpeg"]
 document_extensions = ["pdf", "txt", "md"]
 ignore_extensions = [
@@ -27,7 +26,6 @@ ignore_extensions = [
 CLIENT_SESSION = httpx.AsyncClient()
 
 
-@lru_cache(maxsize=512)
 async def get_streamable_mp4_url(streamable_url: str) -> str:
     url_pattern = r"https://[a-z\-]+\.streamable\.com/video/mp4/.*?\.mp4\?token=.*?(?:&amp;|&)expires=\d+"
     r = await asyncio.wait_for(
@@ -39,7 +37,6 @@ async def get_streamable_mp4_url(streamable_url: str) -> str:
     raise Exception(f"STREAMABLE URL NOT FOUND IN {streamable_url}")
 
 
-@lru_cache(maxsize=512)
 async def get_gfycat_mp4_url(gfycat_url: str) -> str:
     id_group = r"gfycat\.com\/(?:gifs\/)?(?:detail\/)?(?:amp\/)?(?:ru\/)?(?:fr\/)?(\w+)"
     gfyid = re.findall(id_group, gfycat_url)[0]
@@ -55,7 +52,6 @@ async def get_gfycat_mp4_url(gfycat_url: str) -> str:
     return urls["mp4Url"]
 
 
-@lru_cache(maxsize=512)
 async def get_reddit_mp4_url(reddit_url: str) -> str:
     reddit_qualities = [
         "DASH_600_K",
@@ -80,7 +76,7 @@ async def get_reddit_mp4_url(reddit_url: str) -> str:
 video_scrapers = {
     "gfycat.com": get_gfycat_mp4_url,
     "v.redd.it": get_reddit_mp4_url,
-    "streamable.com": get_streamable_mp4_url,
+    "/streamable.com": get_streamable_mp4_url,
 }
 
 

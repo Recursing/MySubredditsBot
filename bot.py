@@ -606,10 +606,10 @@ async def help_message(message: dict):
 
 
 async def send_updates(refresh_period=15 * 60):
+    start_time = time.time()
     print(datetime.now(), "sending updates...")
     subscriptions = subscriptions_manager.get_subscriptions()
     shuffle(subscriptions)
-    print(subscriptions)
     sleep_time = refresh_period / len(subscriptions)
     print("sleep time:", sleep_time)
     if len(subscriptions) == 0:
@@ -630,7 +630,7 @@ async def send_updates(refresh_period=15 * 60):
             )
             last_time = time.time()
     await asyncio.gather(*tasks)
-    print(datetime.now(), "Sent updates")
+    print(datetime.now(), f"Sent updates in {time.time()-start_time:.2f}")
 
 
 async def check_exceptions(refresh_period=24 * 60 * 60):
