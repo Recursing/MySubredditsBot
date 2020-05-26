@@ -115,6 +115,7 @@ async def send_media(bot: Bot, chat_id: int, url: str, caption: str, parse_mode:
     for domain, scraper in video_scrapers.items():
         if domain in url:
             url = await scraper(url)
+            break
 
     if url is None:
         await bot.send_message(chat_id, caption, parse_mode=parse_mode)

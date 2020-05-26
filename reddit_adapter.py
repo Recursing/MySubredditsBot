@@ -27,7 +27,7 @@ def markdown_to_html(source: str) -> str:
     source = source.replace("&amp;#x200B;", "").replace("&amp;nbsp;", " ")
     bold_md = r"\*\*(.*?)\*\*"
     bold_html = r"<b>\1</b>"
-    link_md = r"\[(.*?)]\((.*?)\)"
+    link_md = r"\[(.*?)]\((\w.*?)\)"
     link_html = r'<a href="\2">\1</a>'
     source = re.sub(link_md, link_html, source)
     source = re.sub(bold_md, bold_html, source)
