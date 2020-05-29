@@ -97,7 +97,7 @@ async def get_posts_from_endpoint(endpoint: str, retry=True) -> List[Post]:
         r_json = response.json()
     except Exception as e:
         if retry:
-            print("sleeping 60 seconds before retrying contacting reddit")
+            print(f"{e!r} sleeping 60 seconds before retrying contacting reddit")
             await asyncio.sleep(60)
             return await get_posts_from_endpoint(endpoint, retry=False)
         raise InvalidAnswerFromEndpoint(f"{endpoint} returned invalid json {response}")
