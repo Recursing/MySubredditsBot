@@ -4,16 +4,25 @@ from typing import List, Tuple, Union
 
 logger = logging.getLogger(__name__)
 
-DB = sqlite3.connect("subscriptions.db", isolation_level=None)
 
-
-def exec_sql(
+def exec_select(
     query: str, parameters: Tuple[Union[str, int], ...] = ()
-) -> sqlite3.Cursor:
-    cursor = DB.cursor()
-    assert query.count("?") == len(parameters)
-    cursor.execute(query, parameters)
-    return cursor
+) -> List[Tuple]:
+    assert query.startswith("SELECT")
+    results = []
+    with sqlite3.connect("subscriptions.db") as DB:
+        cursor = DB.cursor()
+        assert query.count("?") == len(parameters)
+        cursor.execute(query, parameters)
+        results = cursor.fetchall()
+    return results
+
+
+def exec_sql(query: str, parameters: Tuple[Union[str, int], ...] = ()) -> None:
+    with sqlite3.connect("subscriptions.db") as DB:
+        cursor = DB.cursor()
+        assert query.count("?") == len(parameters)
+        cursor.execute(query, parameters)
 
 
 def create_tables():
@@ -64,22 +73,24 @@ def subscribe(chat_id: int, subreddit: str, monthly_rank: int) -> bool:
 
 def is_subscribed(chat_id: int, subreddit: str) -> bool:
     # try to update, if not found insert
-    cursor = exec_sql(
+    results = exec_select(
         "SELECT * FROM subscriptions WHERE chat_id=? AND subreddit=?",
         (chat_id, subreddit),
     )
-    return bool(cursor.fetchone())
+    return bool(results)
 
 
 def unsubscribe(chat_id: int, subreddit: str) -> bool:
     """
         returns False if there is no matching subscription
     """
-    cursor = exec_sql(
+    if not is_subscribed(chat_id, subreddit):
+        return False
+    exec_sql(
         "DELETE FROM subscriptions WHERE chat_id=? AND subreddit=?",
         (chat_id, subreddit),
     )
-    return bool(cursor.rowcount)
+    return True
 
 
 def update_per_month(chat_id: int, subreddit: str, new_monthly_rank: int):
@@ -90,63 +101,58 @@ def update_per_month(chat_id: int, subreddit: str, new_monthly_rank: int):
 
 
 def get_subscriptions() -> List[Tuple[int, str, int]]:
-    cursor = exec_sql("SELECT chat_id, subreddit, per_month FROM subscriptions")
-    return list(cursor.fetchall())
+    return exec_select("SELECT chat_id, subreddit, per_month FROM subscriptions")  # type: ignore
 
 
 def get_per_month(chat_id: int, subreddit: str) -> int:
-    cursor = exec_sql(
+    results = exec_select(
         "SELECT per_month FROM subscriptions WHERE chat_id=? AND subreddit=?",
         (chat_id, subreddit),
     )
-    return cursor.fetchone()[0]
+    return results[0][0]
 
 
 def all_subreddits() -> List[str]:
-    cursor = exec_sql("SELECT DISTINCT subreddit FROM subscriptions")
-    return [sub for (sub,) in cursor.fetchall()]
+    results = exec_select("SELECT DISTINCT subreddit FROM subscriptions")
+    return [sub for (sub,) in results]
 
 
 def sub_followers(subreddit: str) -> List[Tuple[int, int]]:
-    cursor = exec_sql(
+    return exec_select(  # type: ignore
         "SELECT chat_id, per_month FROM subscriptions WHERE subreddit=?", (subreddit,),
     )
-    return list(cursor.fetchall())
 
 
 def user_subreddits(chat_id: int) -> List[str]:
-    cursor = exec_sql("SELECT subreddit FROM subscriptions WHERE chat_id=?", (chat_id,))
-    return [sub for (sub,) in cursor.fetchall()]
+    rows = exec_select(
+        "SELECT subreddit FROM subscriptions WHERE chat_id=?", (chat_id,)
+    )
+    return [sub for (sub,) in rows]
 
 
 def user_subscriptions(chat_id: int) -> List[Tuple[str, int]]:
-    cursor = exec_sql(
+    return exec_select(  # type: ignore
         "SELECT subreddit, per_month FROM subscriptions WHERE chat_id=?", (chat_id,),
     )
-    return list(cursor.fetchall())
 
 
 def already_sent(chat_id: int, post_id: str) -> bool:
-    cursor = exec_sql(
+    rows = exec_select(
         "SELECT * FROM messages WHERE chat_id=? AND post_id=?", (chat_id, post_id)
     )
-    return bool(cursor.fetchone())
+    return bool(rows)
 
 
 def mark_as_sent(chat_id: int, post_id: str):
     exec_sql("INSERT INTO messages VALUES (?,?)", (chat_id, post_id))
 
 
-def commit():
-    DB.commit()
-
-
 def already_sent_exception(chat_id: int, subreddit: str, reason: str):
-    cursor = exec_sql(
+    rows = exec_select(
         "SELECT * FROM exceptions WHERE chat_id=? AND subreddit=? AND reason=?",
         (chat_id, subreddit, reason),
     )
-    return bool(cursor.fetchone())
+    return bool(rows)
 
 
 def mark_exception_as_sent(chat_id: int, subreddit: str, reason: str):
@@ -158,12 +164,12 @@ def delete_exception(subreddit: str):
 
 
 def get_old_subscribers(subreddit: str) -> List[int]:
-    cursor = exec_sql(
+    rows = exec_select(
         "SELECT DISTINCT chat_id FROM exceptions WHERE subreddit=?", (subreddit,)
     )
-    return [chat_id for (chat_id,) in cursor.fetchall()]
+    return [chat_id for (chat_id,) in rows]
 
 
 def unavailable_subreddits() -> List[str]:
-    cursor = exec_sql("SELECT DISTINCT subreddit FROM exceptions")
-    return [sub for (sub,) in cursor.fetchall()]
+    rows = exec_select("SELECT DISTINCT subreddit FROM exceptions")
+    return [sub for (sub,) in rows]
