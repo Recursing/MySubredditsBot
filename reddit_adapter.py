@@ -55,8 +55,9 @@ def formatted_post(post: Dict) -> str:
         post["selftext"] = post["selftext"][:1000] + "..."
 
     post["selftext"] = markdown_to_html(post["selftext"])
-    if len(post["selftext"]) > 2000:
-        post["selftext"] = post["selftext"][:1900] + "..."
+    if len(post["selftext"]) > 3000:
+        print(post["selftext"])
+        post["selftext"] = post["selftext"][:3000] + "..."
     return template.format(
         sub,
         urllib.parse.quote(post["url"], safe="/:?=&#"),
@@ -83,12 +84,8 @@ class InvalidAnswerFromEndpoint(Exception):
 
 Post = Dict[str, Union[int, str]]
 CLIENT_SESSION = httpx.AsyncClient()
-TIMED_CACHE: Dict[str, Tuple[float, List[Post]]] = {}
-
 
 async def get_posts_from_endpoint(endpoint: str, retry=True) -> List[Post]:
-    if endpoint in TIMED_CACHE and TIMED_CACHE[endpoint][0] > time() - 600:
-        return TIMED_CACHE[endpoint][1]
     headers = {"user-agent": "my-subreddits-bot-0.1"}
     r_json = None
     response = None
@@ -109,10 +106,6 @@ async def get_posts_from_endpoint(endpoint: str, retry=True) -> List[Post]:
         raise InvalidAnswerFromEndpoint(f"{endpoint} returned invalid json")
     if "data" in r_json:
         posts = [p["data"] for p in r_json["data"]["children"] if p["kind"] == "t3"]
-        TIMED_CACHE[endpoint] = (time(), posts)
-        if len(TIMED_CACHE) > 100000:
-            TIMED_CACHE.clear()
-            TIMED_CACHE[endpoint] = (time(), posts)
         return posts
     if "error" in r_json and "reason" in r_json:
         if r_json["reason"] == "banned" or r_json["reason"] == "quarantined":
