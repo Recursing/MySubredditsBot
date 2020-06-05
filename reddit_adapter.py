@@ -56,7 +56,6 @@ def formatted_post(post: Dict) -> str:
 
     post["selftext"] = markdown_to_html(post["selftext"])
     if len(post["selftext"]) > 3000:
-        print(post["selftext"])
         post["selftext"] = post["selftext"][:3000] + "..."
     return template.format(
         sub,
@@ -84,6 +83,7 @@ class InvalidAnswerFromEndpoint(Exception):
 
 Post = Dict[str, Union[int, str]]
 CLIENT_SESSION = httpx.AsyncClient()
+
 
 async def get_posts_from_endpoint(endpoint: str, retry=True) -> List[Post]:
     headers = {"user-agent": "my-subreddits-bot-0.1"}

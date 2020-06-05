@@ -9,19 +9,19 @@ def exec_select(
     query: str, parameters: Tuple[Union[str, int], ...] = ()
 ) -> List[Tuple]:
     assert query.startswith("SELECT")
+    assert query.count("?") == len(parameters)
     results = []
-    with sqlite3.connect("subscriptions.db") as DB:
-        cursor = DB.cursor()
-        assert query.count("?") == len(parameters)
+    with sqlite3.connect("subscriptions.db") as connection:
+        cursor = connection.cursor()
         cursor.execute(query, parameters)
         results = cursor.fetchall()
     return results
 
 
 def exec_sql(query: str, parameters: Tuple[Union[str, int], ...] = ()) -> None:
-    with sqlite3.connect("subscriptions.db") as DB:
-        cursor = DB.cursor()
-        assert query.count("?") == len(parameters)
+    assert query.count("?") == len(parameters)
+    with sqlite3.connect("subscriptions.db") as connection:
+        cursor = connection.cursor()
         cursor.execute(query, parameters)
 
 

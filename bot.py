@@ -4,8 +4,9 @@ import time
 import traceback
 import tracemalloc
 from datetime import datetime
+from functools import wraps
 from random import shuffle
-from typing import Callable, List, Optional
+from typing import Awaitable, Callable, List, Optional
 
 from aiogram import Bot, Dispatcher, exceptions, executor, types
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
@@ -21,6 +22,7 @@ tracemalloc.start()
 
 
 # :(((
+# TODO move to subscriptions_manager
 BANNED = {
     783219617,
     686522367,
@@ -46,8 +48,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-bot = Bot(credentials.BOT_API_KEY)  # commands=list(commands.keys()))
-# bot.start_handling(perm_handle)
+bot = Bot(credentials.BOT_API_KEY)
 dp = Dispatcher(bot, storage=MemoryStorage())
 
 
@@ -62,11 +63,13 @@ async def reply_wrapper(message, *args, **kwargs):
     await send_message_wrapper(message.chat.id, *args, **kwargs)
 
 
-def catch_telegram_exceptions(func: Callable) -> Callable:
+def catch_telegram_exceptions(
+    func: Callable[..., Awaitable[bool]]
+) -> Callable[..., Awaitable[bool]]:
+    @wraps(func)
     async def wrap(*args, **kwargs) -> bool:
         try:
-            await func(*args, **kwargs)
-            return True
+            return await func(*args, **kwargs)
         except (exceptions.Unauthorized, exceptions.ChatNotFound) as e:
             chat_id = kwargs.get("chat_id") or args[0]
             unsub_reasons = [
@@ -103,20 +106,23 @@ def catch_telegram_exceptions(func: Callable) -> Callable:
             exceptions.TelegramAPIError,
         ) as e:
             await log_exception(e, f"TelegramApiError {args} {kwargs}")
-            # await asyncio.sleep(60 * 30)  # Telegram down, sleep a while
+            await asyncio.sleep(60)  # Telegram maybe down, sleep a while
         return False
 
     return wrap
 
 
 @catch_telegram_exceptions
-async def send_message_wrapper(*args, **kwargs):
+async def send_message_wrapper(*args, **kwargs) -> bool:
     await bot.send_message(*args, **kwargs)
+    return True
 
 
 @catch_telegram_exceptions
-async def send_media_wrapper(chat_id: int, url: str, caption: str, parse_mode: str):
-    await media_handler.send_media(bot, chat_id, url, caption, parse_mode)
+async def send_media_wrapper(chat_id: int, url: str, caption: str) -> bool:
+    # parse_mode is always HTML
+    await media_handler.send_media(bot, chat_id, url, caption)
+    return True
 
 
 class StateMachine(StatesGroup):
@@ -510,9 +516,7 @@ async def send_post(chat_id: int, post):
         formatted_post = reddit_adapter.formatted_post(post)
         sent = False
         if await media_handler.contains_media(post["url"]):
-            sent = await send_media_wrapper(
-                chat_id, post["url"], formatted_post, parse_mode="HTML"
-            )
+            sent = await send_media_wrapper(chat_id, post["url"], formatted_post)
         else:
             sent = await send_message_wrapper(
                 chat_id, formatted_post, parse_mode="HTML"
@@ -657,10 +661,7 @@ async def check_exceptions(refresh_period=24 * 60 * 60):
 
 async def loop_forever(fun):
     while True:
-        try:
-            await fun()
-        except Exception:
-            print("!!! Exception in loop_forever!")
+        await fun()
 
 
 async def on_startup(_dispatcher):

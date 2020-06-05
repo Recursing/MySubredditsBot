@@ -96,7 +96,7 @@ def get_extension(url: str) -> str:
     return path.split(".")[-1].lower() if "." in path else ""
 
 
-def get_media_type(url: str) -> str:
+def get_media_type(url: str) -> Optional[str]:
     extension = get_extension(url)
     if extension in image_extensions:
         return "IMG"
@@ -104,47 +104,38 @@ def get_media_type(url: str) -> str:
         return "VID"
     if any(domain in url for domain in video_scrapers):
         return "VID"
-    return ""
+    return None
 
 
-async def send_media(bot: Bot, chat_id: int, url: str, caption: str, parse_mode: str):
+async def fix_url(url: str) -> Optional[str]:
+    maybe_url = url.replace("https:", "http:").replace("&amp;", "&") or None
+    for domain, scraper in video_scrapers.items():
+        if maybe_url and domain in maybe_url:
+            return await scraper(maybe_url)
+    return maybe_url
+
+
+async def send_media(bot: Bot, chat_id: int, url: str, caption: str):
     assert await contains_media(url)
     media_type = get_media_type(url)
 
-    url = url.replace("https:", "http:").replace("&amp;", "&")
-    for domain, scraper in video_scrapers.items():
-        if domain in url:
-            url = await scraper(url)
-            break
+    maybe_url = await fix_url(url)
 
-    if url is None:
-        await bot.send_message(chat_id, caption, parse_mode=parse_mode)
-    elif media_type == "IMG":
-        try:
-            await bot.send_photo(chat_id, url, caption=caption, parse_mode=parse_mode)
-        except (
-            exceptions.PhotoDimensions,
-            exceptions.WrongFileIdentifier,
-            exceptions.InvalidHTTPUrlContent,
-            exceptions.BadRequest,
-        ) as e:
-            print(f"Error sending photo from {url} {e!r}")
-            await bot.send_message(chat_id, caption, parse_mode=parse_mode)
-    elif media_type == "VID":
-        try:
+    if maybe_url is None or media_type is None:
+        await bot.send_message(chat_id, caption, parse_mode="HTML")
+        return
+
+    try:
+        if media_type == "IMG":
+            await bot.send_photo(chat_id, maybe_url, caption=caption, parse_mode="HTML")
+        elif media_type == "VID":
+            maybe_url = maybe_url.replace(".gifv", ".mp4")
             await bot.send_animation(
-                chat_id,
-                url.replace(".gifv", ".mp4"),
-                caption=caption,
-                parse_mode=parse_mode,
+                chat_id, maybe_url, caption=caption, parse_mode="HTML",
             )
-        except (
-            exceptions.WrongFileIdentifier,
-            exceptions.InvalidHTTPUrlContent,
-            exceptions.BadRequest,
-        ) as e:
-            print(f"Error sending video from {url} {e!r}")
-            await bot.send_message(chat_id, caption, parse_mode=parse_mode)
+    except exceptions.BadRequest as e:
+        print(f"Error sending media from {maybe_url} {e!r}")
+        await bot.send_message(chat_id, caption, parse_mode="HTML")
 
 
 async def contains_media(url: str) -> bool:
