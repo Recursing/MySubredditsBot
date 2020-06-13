@@ -27,7 +27,7 @@ def markdown_to_html(source: str) -> str:
     source = source.replace("&amp;#x200B;", "").replace("&amp;nbsp;", " ")
     bold_md = r"\*\*(.*?)\*\*"
     bold_html = r"<b>\1</b>"
-    link_md = r"\[(.*?)]\((\w.*?)\)"
+    link_md = r"\[([^\]\[]*?)]\((\w.*?)\)"
     link_html = r'<a href="\2">\1</a>'
     source = re.sub(link_md, link_html, source)
     source = re.sub(bold_md, bold_html, source)
@@ -51,8 +51,8 @@ def formatted_post(post: Dict) -> str:
         '{}: <a href="{}">{}</a> - <a href="https://www.reddit.com{}">'
         "{}+ Comments</a> - +{} in {}\n\n{}"
     )
-    if len(post["selftext"]) > 1100:
-        post["selftext"] = post["selftext"][:1000] + "..."
+    if len(post["selftext"]) > 3100:
+        post["selftext"] = post["selftext"][:3000] + "..."
 
     post["selftext"] = markdown_to_html(post["selftext"])
     if len(post["selftext"]) > 3000:
