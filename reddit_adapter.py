@@ -51,11 +51,11 @@ def formatted_post(post: Dict) -> str:
         '{}: <a href="{}">{}</a> - <a href="https://www.reddit.com{}">'
         "{}+ Comments</a> - +{} in {}\n\n{}"
     )
-    if len(post["selftext"]) > 3100:
-        post["selftext"] = post["selftext"][:3000] + "..."
+    if len(post["selftext"]) > 2100:
+        post["selftext"] = post["selftext"][:2000] + "..."
 
     post["selftext"] = markdown_to_html(post["selftext"])
-    if len(post["selftext"]) > 3000:
+    if len(post["selftext"]) > 3100:
         post["selftext"] = post["selftext"][:3000] + "..."
     return template.format(
         sub,
