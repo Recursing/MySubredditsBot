@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import re
 from typing import Optional
 from urllib.parse import urlparse
@@ -6,7 +7,6 @@ from urllib.parse import urlparse
 from aiogram import Bot, exceptions
 
 import httpx
-from bot import log_exception
 
 image_extensions = ["jpg", "png", "webp"]
 animation_extensions = ["gif", "gifv", "mp4", "mpeg"]
@@ -37,10 +37,7 @@ async def get_streamable_mp4_url(streamable_url: str) -> Optional[str]:
     if match:
         return match.group().replace("&amp;", "&")
 
-    log_exception(
-        Exception("STREAMABLE url not found"),
-        f"STREAMABLE URL NOT FOUND IN {streamable_url}",
-    )
+    logging.error(f"STREAMABLE URL NOT FOUND IN {streamable_url}")
     return None
 
 
@@ -57,7 +54,7 @@ async def get_gfycat_mp4_url(gfycat_url: str) -> Optional[str]:
         urls = r_json["gfyItem"]
         return urls["mp4Url"]
     except Exception as e:
-        log_exception(e, f"Invalid data from gfycat {gfycat_url}")
+        logging.error(f"Invalid data from gfycat {gfycat_url} {e!r}")
         return None
 
 
@@ -134,7 +131,7 @@ async def send_media(bot: Bot, chat_id: int, url: str, caption: str):
                 chat_id, maybe_url, caption=caption, parse_mode="HTML",
             )
     except exceptions.BadRequest as e:
-        print(f"Error sending media from {maybe_url} {e!r}")
+        logging.error(f"Error sending media from {maybe_url} {e!r}")
         await bot.send_message(chat_id, caption, parse_mode="HTML")
 
 
@@ -143,6 +140,6 @@ async def contains_media(url: str) -> bool:
     known_extensions = media_extensions + document_extensions + ignore_extensions
     extension = get_extension(url)
     if 2 <= len(extension) <= 4 and extension not in known_extensions:
-        print("Unknown extension:", extension, url)
+        logging.info(f"Unknown extension: {extension}, {url}")
 
     return get_media_type(url) in ["IMG", "VID"]

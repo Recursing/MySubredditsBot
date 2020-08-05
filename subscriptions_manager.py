@@ -2,6 +2,8 @@ import logging
 import sqlite3
 from typing import List, Tuple, Union
 
+from . import workers
+
 logger = logging.getLogger(__name__)
 
 
@@ -20,6 +22,9 @@ def exec_select(
 
 def exec_sql(query: str, parameters: Tuple[Union[str, int], ...] = ()) -> None:
     assert query.count("?") == len(parameters)
+    # TODO proper mocking
+    # print(f"SQL: {query} {parameters}")
+    # return
     with sqlite3.connect("subscriptions.db") as connection:
         cursor = connection.cursor()
         cursor.execute(query, parameters)
@@ -38,6 +43,7 @@ def create_tables():
         """CREATE TABLE IF NOT EXISTS messages (
             chat_id INTEGER NOT NULL,
             post_id TEXT NOT NULL,
+            Timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (chat_id, post_id)
         );"""
     )
@@ -59,20 +65,19 @@ logger.info("Connected! (Hopefully)")
 
 def subscribe(chat_id: int, subreddit: str, monthly_rank: int) -> bool:
     """
-        return false if the user is already subscribed
+        returns False if the user is already subscribed
     """
-    # try to subscribe, if not found insert
     if is_subscribed(chat_id, subreddit):
         return False
 
     exec_sql(
         "INSERT INTO subscriptions VALUES (?,?,?)", (chat_id, subreddit, monthly_rank),
     )
+    workers.start_worker(chat_id, subreddit, monthly_rank)
     return True
 
 
 def is_subscribed(chat_id: int, subreddit: str) -> bool:
-    # try to update, if not found insert
     results = exec_select(
         "SELECT * FROM subscriptions WHERE chat_id=? AND subreddit=?",
         (chat_id, subreddit),
@@ -90,6 +95,7 @@ def unsubscribe(chat_id: int, subreddit: str) -> bool:
         "DELETE FROM subscriptions WHERE chat_id=? AND subreddit=?",
         (chat_id, subreddit),
     )
+    workers.stop_worker(chat_id, subreddit)
     return True
 
 
@@ -98,6 +104,7 @@ def update_per_month(chat_id: int, subreddit: str, new_monthly_rank: int):
         "UPDATE subscriptions SET per_month=? " " WHERE chat_id=? AND subreddit=?",
         (new_monthly_rank, chat_id, subreddit),
     )
+    workers.start_worker(chat_id, subreddit, new_monthly_rank)
 
 
 def get_subscriptions() -> List[Tuple[int, str, int]]:
@@ -144,7 +151,7 @@ def already_sent(chat_id: int, post_id: str) -> bool:
 
 
 def mark_as_sent(chat_id: int, post_id: str):
-    exec_sql("INSERT INTO messages VALUES (?,?)", (chat_id, post_id))
+    exec_sql("INSERT INTO messages(chat_id, post_id) VALUES (?,?)", (chat_id, post_id))
 
 
 def already_sent_exception(chat_id: int, subreddit: str, reason: str):
@@ -173,3 +180,8 @@ def get_old_subscribers(subreddit: str) -> List[int]:
 def unavailable_subreddits() -> List[str]:
     rows = exec_select("SELECT DISTINCT subreddit FROM exceptions")
     return [sub for (sub,) in rows]
+
+
+def delete_user(chat_id):
+    for sub in user_subreddits(chat_id):
+        unsubscribe(chat_id, sub)

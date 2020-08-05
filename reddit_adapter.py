@@ -1,14 +1,14 @@
 import asyncio
+import logging
 import re
 import urllib.parse
 from datetime import datetime
-from time import time
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Optional, Union
 
 import httpx
 
 
-def format_time_delta(delta_seconds: int) -> str:
+def format_time_delta(delta_seconds: float) -> str:
     delta_seconds = int(delta_seconds)
     days = delta_seconds // (86400)
     hours = (delta_seconds % 86400) // 3600
@@ -27,7 +27,7 @@ def markdown_to_html(source: str) -> str:
     source = source.replace("&amp;#x200B;", "").replace("&amp;nbsp;", " ")
     bold_md = r"\*\*(.*?)\*\*"
     bold_html = r"<b>\1</b>"
-    link_md = r"\[([^\]\[]*?)]\((\w.*?)\)"
+    link_md = r"\[([^\]\[]*?)]\((\w[^\s]*?)\)"
     link_html = r'<a href="\2">\1</a>'
     source = re.sub(link_md, link_html, source)
     source = re.sub(bold_md, bold_html, source)
@@ -92,18 +92,14 @@ async def get_posts_from_endpoint(endpoint: str, retry=True) -> List[Post]:
     try:
         response = await CLIENT_SESSION.get(endpoint, headers=headers, timeout=60)
         r_json = response.json()
+        if not isinstance(r_json, dict):
+            raise InvalidAnswerFromEndpoint()
     except Exception as e:
         if retry:
-            print(f"{e!r} sleeping 60 seconds before retrying contacting reddit")
+            logging.info(f"{e!r} sleeping 60 seconds before retrying contacting reddit")
             await asyncio.sleep(60)
             return await get_posts_from_endpoint(endpoint, retry=False)
         raise InvalidAnswerFromEndpoint(f"{endpoint} returned invalid json {response}")
-    if not isinstance(r_json, dict):
-        if retry:
-            print("sleeping 60 seconds before retrying contacting reddit")
-            await asyncio.sleep(60)
-            return await get_posts_from_endpoint(endpoint, retry=False)
-        raise InvalidAnswerFromEndpoint(f"{endpoint} returned invalid json")
     if "data" in r_json:
         posts = [p["data"] for p in r_json["data"]["children"] if p["kind"] == "t3"]
         return posts
@@ -115,27 +111,49 @@ async def get_posts_from_endpoint(endpoint: str, retry=True) -> List[Post]:
     raise Exception(f"{r_json}")
 
 
+async def hot_posts(subreddit: str, limit: int = 30) -> List[Dict]:
+    endpoint = f"https://www.reddit.com/r/{subreddit}/hot.json?limit={limit}"
+    return await get_posts_from_endpoint(endpoint)
+
+
 async def new_posts(subreddit: str, limit: int = 30) -> List[Dict]:
     endpoint = f"https://www.reddit.com/r/{subreddit}/new.json?limit={limit}"
     return await get_posts_from_endpoint(endpoint)
 
 
+async def get_top_posts(subreddit: str, time_period: str, limit: int) -> List[Dict]:
+    endpoint = (
+        f"https://www.reddit.com/r/{subreddit}/top.json?t={time_period}&limit={limit}"
+    )
+    return await get_posts_from_endpoint(endpoint)
+
+
 async def get_posts(subreddit: str, per_month: int) -> List[Dict]:
-    base = "https://www.reddit.com/r/"
+    posts: List[Dict] = []
     if per_month < 99:
-        limit = per_month
-        time_period = "month"
-    elif per_month // 4 < 99:
+        posts.extend(await get_top_posts(subreddit, "month", per_month))
+    if per_month // 4 < 99:
         limit = per_month // 4
-        time_period = "week"
-    elif per_month // 31 < 99:
+        posts.extend(await get_top_posts(subreddit, "week", limit))
+    if per_month // 31 < 99:
         limit = per_month // 31
-        time_period = "day"
-    else:
-        limit = min(per_month // (31 * 24), 99)
-        time_period = "hour"
-    endpoint = f"{base}{subreddit}/top.json?t={time_period}&limit={limit}"
-    return (await get_posts_from_endpoint(endpoint))[:limit]
+        posts.extend(await get_top_posts(subreddit, "day", limit))
+
+    posts.extend(await hot_posts(subreddit, min(per_month // 10, 99)))
+
+    def get_score(post):
+        return post["score"]
+
+    posts.sort(key=get_score, reverse=True)
+
+    seen_ids = set()
+    unique_posts = []
+    for post in posts:
+        if post["id"] in seen_ids:
+            continue
+        seen_ids.add(post["id"])
+        unique_posts.append(post)
+    return unique_posts
 
 
 async def check_subreddit(subreddit: str):
@@ -145,3 +163,17 @@ async def check_subreddit(subreddit: str):
 def valid_subreddit(text: str) -> bool:
     pattern = r"\A[A-Za-z0-9][A-Za-z0-9_]{2,20}\Z"
     return bool(re.match(pattern, text))
+
+
+async def get_posts_error(sub: str, monthly_rank: int) -> Optional[str]:
+    if not valid_subreddit(sub):
+        return f"{sub} is not a valid subreddit name"
+    try:
+        posts = await get_posts(sub, monthly_rank)
+        if posts:
+            return None
+        return f"r/{sub} does not exist or is empty or something"
+    except SubredditBanned:
+        return f"r/{sub} has been banned"
+    except SubredditPrivate:
+        return f"r/{sub} is private"
