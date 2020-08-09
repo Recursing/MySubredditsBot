@@ -5,9 +5,9 @@ import time
 from datetime import datetime
 from typing import Dict, Tuple
 
-from . import reddit_adapter
-from . import subscriptions_manager
-from . import telegram_adapter
+import reddit_adapter
+import subscriptions_manager
+import telegram_adapter
 
 
 async def send_subscription_update(subreddit: str, chat_id: int, per_month: int):

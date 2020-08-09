@@ -8,10 +8,10 @@ from typing import Awaitable, Callable
 from aiogram import Bot, Dispatcher, exceptions
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 
-from . import credentials
-from . import media_handler
-from . import reddit_adapter
-from . import subscriptions_manager
+import credentials
+import media_handler
+import reddit_adapter
+import subscriptions_manager
 
 bot = Bot(credentials.BOT_API_KEY)
 dispatcher = Dispatcher(bot, storage=MemoryStorage())

@@ -4,9 +4,8 @@ import re
 from typing import Optional
 from urllib.parse import urlparse
 
-from aiogram import Bot, exceptions
-
 import httpx
+from aiogram import Bot, exceptions
 
 image_extensions = ["jpg", "png", "webp"]
 animation_extensions = ["gif", "gifv", "mp4", "mpeg"]

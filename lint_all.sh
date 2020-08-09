@@ -1,5 +1,5 @@
 echo "isort..."
-isort --recursive .
+isort
 echo "black..."
 black .
 echo "pylint..."

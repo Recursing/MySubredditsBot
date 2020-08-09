@@ -2,7 +2,7 @@ import logging
 import sqlite3
 from typing import List, Tuple, Union
 
-from . import workers
+import workers
 
 logger = logging.getLogger(__name__)
 
