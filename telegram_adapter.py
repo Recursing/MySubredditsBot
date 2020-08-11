@@ -9,9 +9,8 @@ from aiogram import Bot, Dispatcher, exceptions
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 
 import credentials
-import media_handler
-import reddit_adapter
 import subscriptions_manager
+import twitter_adapter
 
 bot = Bot(credentials.BOT_API_KEY)
 dispatcher = Dispatcher(bot, storage=MemoryStorage())
@@ -113,13 +112,6 @@ async def send_message(*args, **kwargs) -> bool:
     return True
 
 
-@catch_telegram_exceptions
-async def send_media(chat_id: int, url: str, caption: str) -> bool:
-    # parse_mode is always HTML
-    await media_handler.send_media(bot, chat_id, url, caption)
-    return True
-
-
 async def edit_message(text: str, chat_id: int, message_id: int, reply_markup):
     try:
         await bot.edit_message_text(
@@ -145,12 +137,14 @@ async def send_post(chat_id: int, post):
     # TODO: handle images and gifs
     formatted_post = str(post)
     try:
-        formatted_post = reddit_adapter.formatted_post(post)
+        formatted_post = twitter_adapter.formatted_post(post)
         sent = False
-        if await media_handler.contains_media(post["url"]):
-            sent = await send_media(chat_id, post["url"], formatted_post)
-        else:
-            sent = await send_message(chat_id, formatted_post, parse_mode="HTML")
+        sent = await send_message(
+            chat_id,
+            formatted_post,
+            parse_mode="HTML",
+            disable_web_page_preview=(not post["has_media"]),
+        )
         if sent:
             subscriptions_manager.mark_as_sent(chat_id, post["id"])
     except Exception as e:

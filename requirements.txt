@@ -1,2 +1,9 @@
 httpx
 aiogram
+
+mypy
+pylint
+flake8
+black
+isort
+authlib
