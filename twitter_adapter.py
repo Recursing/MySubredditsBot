@@ -45,7 +45,7 @@ def formatted_post(post: Dict[str, Any]) -> str:
     """
     screen_name = post["user"]["screen_name"]
     permalink = f"https://www.twitter.com/{screen_name}/status/{post['id']}"
-    if hasattr(post, "retweeted_status"):
+    if post.get("retweeted_status"):
         post["full_text"] = post["retweeted_status"]["full_text"]
     text = re.sub(
         r"(^|[^@\w])@(\w{1,20})\b",
@@ -54,16 +54,15 @@ def formatted_post(post: Dict[str, Any]) -> str:
     )
     if post["in_reply_to_screen_name"]:
         text = "Reply: " + text
-    if hasattr(post, "entities") and post["entities"].get("urls"):
+    if post.get("entities") and post["entities"].get("urls"):
         for url in post["entities"]["urls"]:
             text = text.replace(url["url"], url["expanded_url"])
-    if hasattr(post, "extended_entities") and post["extended_entities"]:
+    if post.get("extended_entities") and post["extended_entities"]:
         for media in post["extended_entities"]["media"]:
-            text = text.replace(media["url"], "")
-            text = f'<a href="{media["expanded_url"]}">{media["type"]}</a>\n' + text
+            text = text.replace(media["url"], media["expanded_url"])
 
     message = (
-        f'<b>{post["user"]["name"]}</b> • <a href="https://twitter.com/{screen_name}">@{screen_name}</a>'
+        f'<b>{post["user"]["name"]}</b> '
         f' • <a href="{permalink}">{format_time_delta(post["seconds_ago"])} ago</a>:\n\n{text}'
     )
     return message
@@ -88,7 +87,6 @@ async def new_posts(user: str) -> List[Dict[str, Any]]:
         see https://developer.twitter.com/en/docs/tweets/data-dictionary/overview/tweet-object
         it adds a score attribute (favorites + retweets: int) and an has_media attribute (bool)
     """
-
     # call the API asynchronously
     user_act = await get_user_activity(user)
 
