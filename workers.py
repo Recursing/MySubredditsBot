@@ -13,12 +13,13 @@ import twitter_adapter
 async def send_subscription_update(subreddit: str, chat_id: int, per_month: int):
     # Send top unsent post from subreddit to chat_id
     # per_month is used only to choose where to look for posts (see get_posts)
+    period = 3600 * 24 * 31 / per_month
     try:
         post_iterator = await twitter_adapter.new_posts(subreddit)
         for post in post_iterator:
             if subscriptions_manager.already_sent(chat_id, post["id"]):
                 continue
-            if post["seconds_ago"] > 86400 * 40:
+            if post["seconds_ago"] > period * 30:
                 continue
             await telegram_adapter.send_post(chat_id, post)
             break
