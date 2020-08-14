@@ -67,7 +67,7 @@ async def formatted_post(post: Dict[str, Any]) -> str:
             original_text = original_post.get("full_text") or post.get("text")
             pretext = f'<b>Reply to: {original_post["user"]["name"]}</b> • {format_time_delta(elapsed_time)} ago: \n<i> {original_text} </i>\n\n\n'
         except KeyError as e:
-            logging.error(f"Error forrmatting original from {post} {e!r}")
+            logging.error(f"Error formatting original from {post} {e!r}")
             pretext = f"<b>Reply: </b>"
         text = f"{pretext}{text}"
     if post.get("entities") and post["entities"].get("urls"):
@@ -85,7 +85,7 @@ async def formatted_post(post: Dict[str, Any]) -> str:
 
 
 async def get_post(post_id: str) -> Dict[str, Any]:
-    endpoint = "https://api.twitter.com/1.1/statuses/show.json?id={post_id}&tweet_mode=extended"
+    endpoint = f"https://api.twitter.com/1.1/statuses/show.json?id={post_id}&tweet_mode=extended"
     r = await CLIENT_SESSION.get(endpoint)
     post = r.json()
     r.close()
