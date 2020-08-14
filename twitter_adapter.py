@@ -7,11 +7,11 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import dateutil.parser
-from authlib.integrations.httpx_client import AsyncOAuth1Client
-
+from aioauth_client import TwitterClient
 import credentials
 
-CLIENT_SESSION = AsyncOAuth1Client(
+
+TWITTER_CLIENT = TwitterClient(
     credentials.API_KEY,
     credentials.API_SECRET,
     credentials.ACCESS_TOKEN,
@@ -85,11 +85,9 @@ async def formatted_post(post: Dict[str, Any]) -> str:
 
 
 async def get_post(post_id: str) -> Dict[str, Any]:
-    endpoint = f"https://api.twitter.com/1.1/statuses/show.json?id={post_id}&tweet_mode=extended"
-    r = await CLIENT_SESSION.get(endpoint)
-    post = r.json()
-    r.close()
-    return post
+    endpoint = f"https://api.twitter.com/1.1/statuses/show.json"
+    params = {"id": post_id, "tweet_mode": "extended"}
+    return await TWITTER_CLIENT.request("GET", endpoint, params=params)
 
 
 async def get_user_activity(user: str) -> List[Dict[str, Any]]:
@@ -97,13 +95,9 @@ async def get_user_activity(user: str) -> List[Dict[str, Any]]:
         Call the twitter API to get the last tweets, extended is required to get the full text
     """
     tweet_number = 100
-    r = await CLIENT_SESSION.get(
-        f"https://api.twitter.com/1.1/statuses/user_timeline.json"
-        f"?screen_name={user}&count={tweet_number}&tweet_mode=extended",
-    )
-    posts = r.json()
-    r.close()
-    return posts
+    endpoint = f"https://api.twitter.com/1.1/statuses/user_timeline.json"
+    params = {"screen_name": user, "count": tweet_number, "tweet_mode": "extended"}
+    return await TWITTER_CLIENT.request("GET", endpoint, params=params)
 
 
 async def new_posts(user: str) -> List[Dict[str, Any]]:

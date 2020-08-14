@@ -1,4 +1,5 @@
-httpx
+aiohttp
+aioauth-client
 aiogram
 
 mypy
@@ -6,4 +7,3 @@ pylint
 flake8
 black
 isort
-authlib
