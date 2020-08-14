@@ -3,7 +3,7 @@ import logging
 import time
 import traceback
 from functools import wraps
-from typing import Awaitable, Callable
+from typing import Any, Awaitable, Callable, Dict
 
 from aiogram import Bot, Dispatcher, exceptions
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
@@ -131,14 +131,12 @@ async def reply(message, *args, **kwargs):
     await send_message(message.chat.id, *args, **kwargs)
 
 
-async def send_post(chat_id: int, post):
+async def send_post(chat_id: int, post: Dict[str, Any]):
     if subscriptions_manager.already_sent(chat_id, post["id"]):
         return
     # TODO: handle images and gifs
-    formatted_post = str(post)
     try:
-        formatted_post = twitter_adapter.formatted_post(post)
-        sent = False
+        formatted_post = await twitter_adapter.formatted_post(post)
         sent = await send_message(
             chat_id,
             formatted_post,
@@ -149,6 +147,6 @@ async def send_post(chat_id: int, post):
             subscriptions_manager.mark_as_sent(chat_id, post["id"])
     except Exception as e:
         logging.error(f"{e!r} while sending post, sleeping")
-        await send_exception(e, f"Uncaught sending {formatted_post} to {chat_id}")
+        await send_exception(e, f"Uncaught sending {post} to {chat_id}")
         # If I'm doing something wrong or telegram is down, at least wait a bit
         await asyncio.sleep(60 * 2)

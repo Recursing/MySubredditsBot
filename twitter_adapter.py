@@ -39,21 +39,37 @@ def format_time_delta(delta_seconds: float) -> str:
     return f"{seconds}s"
 
 
-def formatted_post(post: Dict[str, Any]) -> str:
+async def formatted_post(post: Dict[str, Any]) -> str:
     """
         Returns the message to send, with Telegram-style pesudo-HTML markup
     """
     screen_name = post["user"]["screen_name"]
     permalink = f"https://www.twitter.com/{screen_name}/status/{post['id']}"
+    text = post.get("full_text") or post.get("text") or ""
     if post.get("retweeted_status"):
-        post["full_text"] = post["retweeted_status"]["full_text"]
+        op = post["retweeted_status"]
+        op_name = op["user"]["screen_name"]
+        permalink = f"https://www.twitter.com/{op_name}/status/{op['id']}"
+        rt_text = op.get("full_text") or op.get("text") or ""
+        text = f"<b>Retweet from {op_name}</b>: \n{rt_text}"
     text = re.sub(
         r"(^|[^@\w])@(\w{1,20})\b",
         '\\1<a href="http://twitter.com/\\2">@\\2</a>',
-        post["full_text"],
+        text,
     )
     if post["in_reply_to_screen_name"]:
-        text = "Reply: " + text
+        try:
+            original_post = await get_post(post["in_reply_to_status_id"])
+            elapsed_time = (
+                datetime.now().timestamp()
+                - dateutil.parser.parse(original_post["created_at"]).timestamp()
+            )
+            original_text = original_post.get("full_text") or post.get("text")
+            pretext = f'<b>Reply to: {original_post["user"]["name"]}</b> • {format_time_delta(elapsed_time)} ago: \n<i> {original_text} </i>\n\n\n'
+        except KeyError as e:
+            logging.error(f"Error forrmatting original from {post} {e!r}")
+            pretext = f"<b>Reply: </b>"
+        text = f"{pretext}{text}"
     if post.get("entities") and post["entities"].get("urls"):
         for url in post["entities"]["urls"]:
             text = text.replace(url["url"], url["expanded_url"])
@@ -68,6 +84,14 @@ def formatted_post(post: Dict[str, Any]) -> str:
     return message
 
 
+async def get_post(post_id: str) -> Dict[str, Any]:
+    endpoint = "https://api.twitter.com/1.1/statuses/show.json?id={post_id}&tweet_mode=extended"
+    r = await CLIENT_SESSION.get(endpoint)
+    post = r.json()
+    r.close()
+    return post
+
+
 async def get_user_activity(user: str) -> List[Dict[str, Any]]:
     """
         Call the twitter API to get the last tweets, extended is required to get the full text
@@ -77,7 +101,9 @@ async def get_user_activity(user: str) -> List[Dict[str, Any]]:
         f"https://api.twitter.com/1.1/statuses/user_timeline.json"
         f"?screen_name={user}&count={tweet_number}&tweet_mode=extended",
     )
-    return r.json()
+    posts = r.json()
+    r.close()
+    return posts
 
 
 async def new_posts(user: str) -> List[Dict[str, Any]]:
