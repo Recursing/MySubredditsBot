@@ -401,7 +401,7 @@ async def list_subscriptions(chat_id: int):
     if subscriptions:
         text_list = "\n\n".join(
             (
-                f"[{sub}](https://www.reddit.com/r/{sub}), "
+                f"[{sub}](https://twitter.com/{sub}), "
                 f"about {format_period(per_month)}"
             )
             for sub, per_month in subscriptions
