@@ -8,10 +8,10 @@ from typing import Awaitable, Callable
 from aiogram import Bot, Dispatcher, exceptions
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 
-from . import credentials
-from . import media_handler
-from . import reddit_adapter
-from . import subscriptions_manager
+import credentials
+import media_handler
+import reddit_adapter
+import subscriptions_manager
 
 bot = Bot(credentials.BOT_API_KEY)
 dispatcher = Dispatcher(bot, storage=MemoryStorage())
@@ -69,6 +69,7 @@ def catch_telegram_exceptions(
                 "user is deactivated",
                 "chat not found",
                 "bot was kicked",
+                "bot is not a member",
             ]
             if any(reason in str(e).lower() for reason in unsub_reasons):
                 logging.warning(f"Unsubscribing user {chat_id} for {e!r}")
@@ -139,7 +140,7 @@ async def reply(message, *args, **kwargs):
     await send_message(message.chat.id, *args, **kwargs)
 
 
-async def send_post(chat_id: int, post):
+async def send_post(chat_id: int, post, subreddit: str):
     if subscriptions_manager.already_sent(chat_id, post["id"]):
         return
     # TODO: handle images and gifs
@@ -152,7 +153,7 @@ async def send_post(chat_id: int, post):
         else:
             sent = await send_message(chat_id, formatted_post, parse_mode="HTML")
         if sent:
-            subscriptions_manager.mark_as_sent(chat_id, post["id"])
+            subscriptions_manager.mark_as_sent(chat_id, post["id"], subreddit)
     except Exception as e:
         logging.error(f"{e!r} while sending post, sleeping")
         await send_exception(e, f"Uncaught sending {formatted_post} to {chat_id}")

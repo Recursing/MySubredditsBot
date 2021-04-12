@@ -2,7 +2,7 @@ import logging
 import sqlite3
 from typing import List, Tuple, Union
 
-from . import workers
+import workers
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +44,7 @@ def create_tables():
             chat_id INTEGER NOT NULL,
             post_id TEXT NOT NULL,
             Timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            subreddit TEXT,
             PRIMARY KEY (chat_id, post_id)
         );"""
     )
@@ -150,8 +151,11 @@ def already_sent(chat_id: int, post_id: str) -> bool:
     return bool(rows)
 
 
-def mark_as_sent(chat_id: int, post_id: str):
-    exec_sql("INSERT INTO messages(chat_id, post_id) VALUES (?,?)", (chat_id, post_id))
+def mark_as_sent(chat_id: int, post_id: str, subreddit: str):
+    exec_sql(
+        "INSERT INTO messages(chat_id, post_id, subreddit) VALUES (?,?,?)",
+        (chat_id, post_id, subreddit),
+    )
 
 
 def already_sent_exception(chat_id: int, subreddit: str, reason: str):

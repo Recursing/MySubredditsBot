@@ -5,9 +5,9 @@ import time
 from datetime import datetime
 from typing import Dict, Tuple
 
-from . import reddit_adapter
-from . import subscriptions_manager
-from . import telegram_adapter
+import reddit_adapter
+import subscriptions_manager
+import telegram_adapter
 
 
 async def send_subscription_update(subreddit: str, chat_id: int, per_month: int):
@@ -15,14 +15,14 @@ async def send_subscription_update(subreddit: str, chat_id: int, per_month: int)
     # per_month is used only to choose where to look for posts (see get_posts)
     try:
         post_iterator = await reddit_adapter.get_posts(subreddit, per_month)
-        if per_month > 2000:
+        if per_month > 1000:
             post_iterator += await reddit_adapter.new_posts(subreddit)
         for post in post_iterator:
             if subscriptions_manager.already_sent(chat_id, post["id"]):
                 continue
             if post["created_utc"] < time.time() - 86400 * 40:
                 continue
-            await telegram_adapter.send_post(chat_id, post)
+            await telegram_adapter.send_post(chat_id, post, subreddit)
             break
         else:
             logging.info(f"No post to send from {subreddit} to {chat_id}, {per_month=}")
@@ -58,7 +58,7 @@ async def make_worker(chat_id: int, subreddit: str, per_month: int):
     # Randomize the period a few seconds to prevent workers to sync up
     period += random.random() * 10 - 5
     # Before the first run sleep randomly a bit to offset the worker
-    init_sleep = random.random() * period / 10
+    init_sleep = random.random() * period / 2
     t0 = time.monotonic()
     print(f"{chat_id}, {subreddit}, {per_month}, {period=}, {init_sleep=:.2f}")
     await asyncio.sleep(init_sleep)
