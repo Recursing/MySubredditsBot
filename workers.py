@@ -63,8 +63,8 @@ async def make_worker(
     if not last_message:
         init_sleep = random.random() * period / 2
     else:
-        already_elapsed = (datetime.now() - last_message).total_seconds()
-        init_sleep = max(0, period - already_elapsed)
+        already_elapsed = (datetime.utcnow() - last_message).total_seconds()
+        init_sleep = max(random.random() * 30, period - already_elapsed)
     t0 = time.monotonic()
     print(f"{chat_id}, {subreddit}, {per_month}, {period=}, {init_sleep=:.2f}")
     await asyncio.sleep(init_sleep)
