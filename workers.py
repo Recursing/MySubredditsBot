@@ -3,7 +3,7 @@ import logging
 import random
 import time
 from datetime import datetime
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Optional
 
 import reddit_adapter
 import subscriptions_manager
@@ -52,13 +52,19 @@ async def send_subscription_update(subreddit: str, chat_id: int, per_month: int)
         time.sleep(60 * 2)
 
 
-async def make_worker(chat_id: int, subreddit: str, per_month: int):
+async def make_worker(
+    chat_id: int, subreddit: str, per_month: int, last_message: Optional[datetime]
+):
     period = 3600 * 24 * 31 / per_month
 
     # Randomize the period a few seconds to prevent workers to sync up
     period += random.random() * 10 - 5
     # Before the first run sleep randomly a bit to offset the worker
-    init_sleep = random.random() * period / 2
+    if not last_message:
+        init_sleep = random.random() * period / 2
+    else:
+        already_elapsed = (datetime.now() - last_message).total_seconds()
+        init_sleep = max(0, period - already_elapsed)
     t0 = time.monotonic()
     print(f"{chat_id}, {subreddit}, {per_month}, {period=}, {init_sleep=:.2f}")
     await asyncio.sleep(init_sleep)
@@ -97,8 +103,11 @@ def stop_worker(chat_id, subreddit):
 def start_worker(chat_id, subreddit, per_month):
     if (chat_id, subreddit) in workers:
         stop_worker(chat_id, subreddit)
+    last_message = subscriptions_manager.get_last_subscription_message(
+        chat_id, subreddit
+    )
     workers[(chat_id, subreddit)] = asyncio.create_task(
-        make_worker(chat_id, subreddit, per_month)
+        make_worker(chat_id, subreddit, per_month, last_message)
     )
 
 
@@ -111,8 +120,12 @@ def start_workers():
         time.sleep(10)
     random.shuffle(subscriptions)
     for chat_id, subreddit, per_month in subscriptions:
+        last_message = subscriptions_manager.get_last_subscription_message(
+            chat_id, subreddit
+        )
+        print("Making worker: ", chat_id, subreddit, per_month, last_message)
         workers[(chat_id, subreddit)] = asyncio.create_task(
-            make_worker(chat_id, subreddit, per_month)
+            make_worker(chat_id, subreddit, per_month, last_message)
         )
 
 

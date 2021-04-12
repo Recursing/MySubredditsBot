@@ -1,6 +1,7 @@
 import logging
+from datetime import datetime
 import sqlite3
-from typing import List, Tuple, Union
+from typing import List, Tuple, Union, Optional
 
 import workers
 
@@ -179,6 +180,19 @@ def get_old_subscribers(subreddit: str) -> List[int]:
         "SELECT DISTINCT chat_id FROM exceptions WHERE subreddit=?", (subreddit,)
     )
     return [chat_id for (chat_id,) in rows]
+
+
+def get_last_subscription_message(chat_id: int, subreddit: str) -> Optional[datetime]:
+    rows = exec_select(
+        "SELECT MAX(timestamp) from messages WHERE chat_id=? AND subreddit=?",
+        (chat_id, subreddit),
+    )
+    for (timestamp,) in rows:
+        try:
+            return datetime.fromisoformat(timestamp)
+        except TypeError:
+            return None
+    return None
 
 
 def unavailable_subreddits() -> List[str]:
