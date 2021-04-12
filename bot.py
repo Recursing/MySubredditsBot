@@ -6,11 +6,11 @@ from aiogram import executor, types
 from aiogram.dispatcher.filters import Command
 from aiogram.dispatcher.filters.state import State, StatesGroup
 
-from . import reddit_adapter
-from . import subscriptions_manager
-from . import telegram_adapter
-from . import workers
-from .telegram_adapter import reply, send_message
+import reddit_adapter
+import subscriptions_manager
+import telegram_adapter
+import workers
+from telegram_adapter import reply, send_message
 
 bot = telegram_adapter.bot
 dp = telegram_adapter.dispatcher
@@ -33,7 +33,9 @@ BANNED = {
     25897720,
     691437317,
     833945522,
+    1292839081,
     -1001229267832,
+    521982047,
 }
 
 # Enable logging

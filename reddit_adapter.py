@@ -48,7 +48,7 @@ def formatted_post(post: Dict) -> str:
         title += " - NSFW"
 
     template = (
-        '{}: <a href="{}">{}</a> - <a href="https://www.reddit.com{}">'
+        '{}: <a href="{}">{}</a> - <a href="https://old.reddit.com{}">'
         "{}+ Comments</a> - +{} in {}\n\n{}"
     )
     if len(post["selftext"]) > 2100:
