@@ -70,6 +70,7 @@ def catch_telegram_exceptions(
                 "chat not found",
                 "bot was kicked",
                 "bot is not a member",
+                "need administrator rights",
             ]
             if any(reason in str(e).lower() for reason in unsub_reasons):
                 logging.warning(f"Unsubscribing user {chat_id} for {e!r}")
