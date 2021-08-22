@@ -157,10 +157,6 @@ async def get_posts(subreddit: str, per_month: int) -> List[Dict]:
     return unique_posts
 
 
-async def check_subreddit(subreddit: str):
-    await new_posts(subreddit)
-
-
 def valid_subreddit(text: str) -> bool:
     pattern = r"\A[A-Za-z0-9][A-Za-z0-9_]{2,20}\Z"
     return bool(re.match(pattern, text))
@@ -171,6 +167,8 @@ async def get_posts_error(sub: str, monthly_rank: int) -> Optional[str]:
         return f"{sub} is not a valid subreddit name"
     try:
         posts = await get_posts(sub, monthly_rank)
+        if posts and sum(post["over_18"] for post in posts) / len(posts) >= 0.8:
+            return f"r/{sub} seems to be a porn subreddit, if that's not the case contact @recursing"
         if posts:
             return None
         return f"r/{sub} does not exist or is empty or something"
