@@ -18,27 +18,6 @@ dp = telegram_adapter.dispatcher
 tracemalloc.start()
 
 
-# :(((
-# TODO move to subscriptions_manager
-BANNED = {
-    766384867,
-    783219617,
-    686522367,
-    457538401,
-    765120636,
-    782767735,
-    1003294400,
-    -395678896,
-    347883772,
-    25897720,
-    691437317,
-    833945522,
-    1292839081,
-    -1001229267832,
-    521982047,
-    835461752,
-}
-
 # Enable logging
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -133,8 +112,6 @@ async def handle_add(message: types.Message):
         Subscribe to new space/comma separated subreddits
     """
     chat_id = message["chat"]["id"]
-    if chat_id in BANNED:
-        return
     text = message["text"].lower().strip()
 
     if len(text.split()) > 1:
@@ -188,7 +165,7 @@ async def remove_reply_handler(message: types.Message, state):
 def sub_list_keyboard(chat_id: int, command):
     subreddits = subscriptions_manager.user_subreddits(chat_id)
     subreddits.sort(reverse=True)
-    if not subreddits:
+    if not subreddits or len(subreddits) > 60:
         return types.ReplyKeyboardRemove()
 
     if len(subreddits) >= 19:
@@ -402,21 +379,22 @@ async def handle_check(message: types.Message):
 async def list_subscriptions(chat_id: int):
     subscriptions = list(subscriptions_manager.user_subscriptions(chat_id))
     if subscriptions:
-        text_list = "\n\n".join(
-            (
-                f"[{sub}](https://www.reddit.com/r/{sub}), "
-                f"about {format_period(per_month)}"
+        for sub_list in chunks(subscriptions, 20):
+            text_list = "\n\n".join(
+                (
+                    f"[{sub}](https://www.reddit.com/r/{sub}), "
+                    f"about {format_period(per_month)}"
+                )
+                for sub, per_month in sub_list
             )
-            for sub, per_month in subscriptions
-        )
-        markup = sub_list_keyboard(chat_id, "change_th")
-        await send_message(
-            chat_id,
-            f"You are currently subscribed to:\n\n{text_list}",
-            parse_mode="Markdown",
-            reply_markup=markup,
-            disable_web_page_preview=True,
-        )
+            markup = sub_list_keyboard(chat_id, "change_th")
+            await send_message(
+                chat_id,
+                f"You are currently subscribed to:\n\n{text_list}",
+                parse_mode="Markdown",
+                reply_markup=markup,
+                disable_web_page_preview=True,
+            )
     else:
         await send_message(
             chat_id, "You are not subscribed to any subreddit, press /add to subscribe"
