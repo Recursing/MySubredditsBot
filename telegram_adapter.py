@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import logging
 import time
@@ -141,22 +143,27 @@ async def reply(message, *args, **kwargs):
     await send_message(message.chat.id, *args, **kwargs)
 
 
-async def send_post(chat_id: int, post, subreddit: str):
-    if subscriptions_manager.already_sent(chat_id, post["id"]):
+async def send_post(
+    chat_id: int, content: reddit_adapter.Post | reddit_adapter.Comment, subreddit: str
+):
+    if subscriptions_manager.already_sent(chat_id, content["id"]):
         return
     # TODO: handle images and gifs
-    formatted_post = str(post)
     try:
-        formatted_post = reddit_adapter.formatted_post(post)
+        is_post = content["kind"] == "t3"
+        if is_post:
+            formatted_post = reddit_adapter.formatted_post(content)
+        else:
+            formatted_post = reddit_adapter.formatted_comment(content)
         sent = False
-        if await media_handler.contains_media(post["url"]):
-            sent = await send_media(chat_id, post["url"], formatted_post)
+        if is_post and await media_handler.contains_media(content["url"]):
+            sent = await send_media(chat_id, content["url"], formatted_post)
         else:
             sent = await send_message(chat_id, formatted_post, parse_mode="HTML")
         if sent:
-            subscriptions_manager.mark_as_sent(chat_id, post["id"], subreddit)
+            subscriptions_manager.mark_as_sent(chat_id, content["id"], subreddit)
     except Exception as e:
-        logging.error(f"{e!r} while sending post, sleeping")
-        await send_exception(e, f"Uncaught sending {formatted_post} to {chat_id}")
+        logging.error(f"{e!r} while sending content, sleeping")
+        await send_exception(e, f"Uncaught sending {str(content)} to {chat_id}")
         # If I'm doing something wrong or telegram is down, at least wait a bit
         await asyncio.sleep(60 * 2)

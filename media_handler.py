@@ -111,7 +111,7 @@ async def fix_url(url: str) -> Optional[str]:
     return maybe_url
 
 
-async def send_media(bot: Bot, chat_id: int, url: str, caption: str):
+async def send_media(bot: Bot, chat_id: int, url: str, caption: str) -> None:
     assert await contains_media(url)
     media_type = get_media_type(url)
 
@@ -127,7 +127,10 @@ async def send_media(bot: Bot, chat_id: int, url: str, caption: str):
         elif media_type == "VID":
             maybe_url = maybe_url.replace(".gifv", ".mp4")
             await bot.send_animation(
-                chat_id, maybe_url, caption=caption, parse_mode="HTML",
+                chat_id,
+                maybe_url,
+                caption=caption,
+                parse_mode="HTML",
             )
     except exceptions.BadRequest as e:
         logging.error(f"Error sending media from {maybe_url} {e!r}")

@@ -1,10 +1,13 @@
+from __future__ import annotations
+
 import logging
 import tracemalloc
-from typing import List
+from typing import Any, Callable, Dict, Iterable, List, TypeVar
 
 from aiogram import executor, types
 from aiogram.dispatcher.filters import Command
 from aiogram.dispatcher.filters.state import State, StatesGroup
+from aiogram.types.message import Message
 
 import reddit_adapter
 import subscriptions_manager
@@ -61,8 +64,17 @@ async def inline_cancel_handler(query: types.CallbackQuery, state):
     )
 
 
+def _normalize_sub(sub: str) -> str:
+    if sub.startswith("user/"):
+        sub = sub.replace("user/", "u/", 1)
+    if sub[1] != "/":
+        sub = f"r/{sub}"
+    return sub
+
+
 async def add_subscription(chat_id: int, sub: str) -> bool:
     monthly_rank = 31
+    sub = _normalize_sub(sub)
     error = await reddit_adapter.get_posts_error(sub, monthly_rank)
     if error:
         await send_message(chat_id, error)
@@ -73,6 +85,7 @@ async def add_subscription(chat_id: int, sub: str) -> bool:
 
 
 async def add_subscriptions(chat_id: int, subs: List[str]):
+    subs = [_normalize_sub(sub) for sub in subs]
     if len(subs) > 5:
         await send_message(
             chat_id, "Can't subscribe to more than 5 subreddits per message"
@@ -109,7 +122,7 @@ async def add_reply_handler(message: types.Message, state):
 @dp.message_handler(commands=["add"])
 async def handle_add(message: types.Message):
     """
-        Subscribe to new space/comma separated subreddits
+    Subscribe to new space/comma separated subreddits
     """
     chat_id = message["chat"]["id"]
     text = message["text"].lower().strip()
@@ -132,6 +145,7 @@ async def handle_add(message: types.Message):
 
 
 async def remove_subscriptions(chat_id: int, subs: List[str]):
+    subs = [_normalize_sub(sub) for sub in subs]
     for sub in subs:
         if not subscriptions_manager.is_subscribed(chat_id, sub):
             await send_message(chat_id, f"Error: not subscribed to {sub}")
@@ -147,7 +161,7 @@ async def remove_subscriptions(chat_id: int, subs: List[str]):
 async def remove_callback_handler(query: types.CallbackQuery, state):
     if not query.data or query.data is None:
         return
-    _remove, *subs = query.data.split("|")
+    _, *subs = query.data.split("|")
     message = query.message
     await state.finish()
     await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
@@ -162,7 +176,7 @@ async def remove_reply_handler(message: types.Message, state):
     await state.finish()
 
 
-def sub_list_keyboard(chat_id: int, command):
+def sub_list_keyboard(chat_id: int, command: str):
     subreddits = subscriptions_manager.user_subreddits(chat_id)
     subreddits.sort(reverse=True)
     if not subreddits or len(subreddits) > 60:
@@ -192,7 +206,7 @@ def sub_list_keyboard(chat_id: int, command):
 @dp.message_handler(commands=["remove"])
 async def handle_remove(message: types.Message):
     """
-        Unsubscribe from a subreddit
+    Unsubscribe from a subreddit
     """
     chat_id = message["chat"]["id"]
     text = message["text"].strip().lower()
@@ -220,7 +234,7 @@ async def handle_remove(message: types.Message):
 async def inline_change_handler(query: types.CallbackQuery):
     if not query.data or query.data is None:
         return
-    _less, subreddit = query.data.split("|")
+    _, subreddit = query.data.split("|")
     await change_threshold(
         query.message.chat.id, subreddit, factor=1, original_message=query.message
     )
@@ -228,15 +242,16 @@ async def inline_change_handler(query: types.CallbackQuery):
 
 
 async def change_threshold(
-    chat_id: int, subreddit: str, factor: float, original_message=None
+    chat_id: int, sub: str, factor: float, original_message: Message | None = None
 ):
-    if not subscriptions_manager.is_subscribed(chat_id, subreddit):
+    sub = _normalize_sub(sub)
+    if not subscriptions_manager.is_subscribed(chat_id, sub):
         await send_message(
-            chat_id, f"You are not subscribed to {subreddit}, press /add to subscribe"
+            chat_id, f"You are not subscribed to {sub}, press /add to subscribe"
         )
         return
 
-    current_monthly = subscriptions_manager.get_per_month(chat_id, subreddit)
+    current_monthly = subscriptions_manager.get_per_month(chat_id, sub)
     new_monthly = round(current_monthly * factor)
     if new_monthly == current_monthly and factor != 1:
         if factor > 1:
@@ -250,18 +265,16 @@ async def change_threshold(
     if new_monthly < 1:
         await send_message(chat_id=chat_id, text="Press /remove to unsubscribe")
         return
-    err = await reddit_adapter.get_posts_error(subreddit, new_monthly)
+    err = await reddit_adapter.get_posts_error(sub, new_monthly)
     if err:
         await send_message(chat_id=chat_id, text=err)
         return
-    subscriptions_manager.update_per_month(chat_id, subreddit, new_monthly)
-    message_text = (
-        f"You will receive about {format_period(new_monthly)} " f"from {subreddit}"
-    )
+    subscriptions_manager.update_per_month(chat_id, sub, new_monthly)
+    message_text = f"You will receive about {format_period(new_monthly)} " f"from {sub}"
     inline_keyboard = types.InlineKeyboardMarkup()
     inline_keyboard.row(
-        types.InlineKeyboardButton("Less", callback_data=f"less|{subreddit}"),
-        types.InlineKeyboardButton("More", callback_data=f"more|{subreddit}"),
+        types.InlineKeyboardButton("Less", callback_data=f"less|{sub}"),
+        types.InlineKeyboardButton("More", callback_data=f"more|{sub}"),
     )
     inline_keyboard.add(types.InlineKeyboardButton("cancel", callback_data="cancel"))
     if original_message is None:
@@ -279,7 +292,7 @@ async def change_threshold(
 async def inline_less_handler(query: types.CallbackQuery):
     if not query.data or query.data is None:
         return
-    _less, subreddit = query.data.split("|")
+    _, subreddit = query.data.split("|")
     await change_threshold(
         query.message.chat.id, subreddit, factor=1 / 1.5, original_message=query.message
     )
@@ -291,7 +304,7 @@ async def inline_more_handler(query: types.CallbackQuery):
     await query.answer()  # send answer to close the rounding circle
     if not query.data or query.data is None:
         return
-    _more, subreddit = query.data.split("|")
+    _, subreddit = query.data.split("|")
     await change_threshold(
         query.message.chat.id, subreddit, factor=1.5, original_message=query.message
     )
@@ -313,7 +326,7 @@ async def asked_more_handler(message: types.Message, state):
 
 async def handle_change_threshold(message: types.Message, factor: float):
     """
-        factor: new_monthly / current_monthly
+    factor: new_monthly / current_monthly
     """
     chat_id = message["chat"]["id"]
     text = message["text"].strip().lower()
@@ -345,12 +358,12 @@ async def handle_change_threshold(message: types.Message, factor: float):
 @dp.message_handler(commands=["moar", "more", "mo4r"])
 async def handle_mo4r(message: types.Message):
     """
-        Receive more updates from subreddit
+    Receive more updates from subreddit
     """
     await handle_change_threshold(message, 1.5)
 
 
-def format_period(per_month):
+def format_period(per_month: int):
     if per_month > 31:
         return f"{per_month // 31} messages per day"
     if per_month == 31:
@@ -362,14 +375,14 @@ def format_period(per_month):
 @dp.message_handler(commands=["less", "fewer"])
 async def handle_less(message: types.Message):
     """
-        Receive fewer updates from subreddit
+    Receive fewer updates from subreddit
     """
     await handle_change_threshold(message, 1 / 1.5)
 
 
 @dp.message_handler(commands=["check"])
 async def handle_check(message: types.Message):
-    chat_id = message["chat"]["id"]
+    chat_id: int = message["chat"]["id"]
     subs = list(subscriptions_manager.user_subscriptions(chat_id))
     for sub, per_month in subs:
         await workers.send_subscription_update(sub, chat_id, per_month)
@@ -382,7 +395,7 @@ async def list_subscriptions(chat_id: int):
         for sub_list in chunks(subscriptions, 20):
             text_list = "\n\n".join(
                 (
-                    f"[{sub}](https://www.reddit.com/r/{sub}), "
+                    f"[{sub}](https://www.reddit.com/{sub}), "
                     f"about {format_period(per_month)}"
                 )
                 for sub, per_month in sub_list
@@ -403,16 +416,19 @@ async def list_subscriptions(chat_id: int):
 
 @dp.channel_post_handler(Command(["list"]))
 @dp.message_handler(commands=["list"])
-async def handle_list(message: dict):
+async def handle_list(message: Message):
     """
-        List subreddits you're subscribed to
+    List subreddits you're subscribed to
     """
     await list_subscriptions(message["chat"]["id"])
 
 
-def chunks(sequence, chunk_size=2):
+T = TypeVar("T")
+
+
+def chunks(sequence: Iterable[T], chunk_size: int = 2) -> Iterable[List[T]]:
     """
-        [1,2,3,4,5], 2 --> [[1,2],[3,4],[5]]
+    [1,2,3,4,5], 2 --> [[1,2],[3,4],[5]]
     """
     lsequence = list(sequence)
     while lsequence:
@@ -423,11 +439,11 @@ def chunks(sequence, chunk_size=2):
 
 @dp.channel_post_handler(Command(["start", "help"]))
 @dp.message_handler(commands=["start", "help"])
-async def help_message(message: dict):
+async def help_message(message: Message):
     """
-        Send help message
+    Send help message
     """
-    commands = {
+    commands: Dict[str, Callable[[Message], Any]] = {
         "/help": help_message,
         "/add": handle_add,
         "/remove": handle_remove,

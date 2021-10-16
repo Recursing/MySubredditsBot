@@ -3,7 +3,7 @@ import logging
 import random
 import time
 from datetime import datetime
-from typing import Dict, Tuple, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import reddit_adapter
 import subscriptions_manager
@@ -83,10 +83,10 @@ async def make_worker(
         )
 
 
-workers: Dict[Tuple[int, str], asyncio.Task] = {}
+workers: Dict[Tuple[int, str], asyncio.Task[Any]] = {}
 
 
-def stop_worker(chat_id, subreddit):
+def stop_worker(chat_id: int, subreddit: str):
     try:
         print(f"stopping {chat_id} {subreddit}")
         workers[(chat_id, subreddit)].cancel()
@@ -100,7 +100,7 @@ def stop_worker(chat_id, subreddit):
         )
 
 
-def start_worker(chat_id, subreddit, per_month):
+def start_worker(chat_id: int, subreddit: str, per_month: int):
     if (chat_id, subreddit) in workers:
         stop_worker(chat_id, subreddit)
     last_message = subscriptions_manager.get_last_subscription_message(
@@ -129,9 +129,9 @@ def start_workers():
         )
 
 
-async def check_exceptions(refresh_period=24 * 60 * 60):
+async def check_exceptions(refresh_period: int = 24 * 60 * 60):
     """
-        Check whether private or banned subs are now available
+    Check whether private or banned subs are now available
     """
     while True:
         unavailable_subs = subscriptions_manager.unavailable_subreddits()
@@ -158,6 +158,6 @@ async def check_exceptions(refresh_period=24 * 60 * 60):
         await asyncio.sleep(refresh_period)
 
 
-async def on_startup(_dispatcher):
+async def on_startup(_dispatcher: Any):
     start_workers()
     asyncio.create_task(check_exceptions())

@@ -1,7 +1,7 @@
 import logging
-from datetime import datetime
 import sqlite3
-from typing import List, Tuple, Union, Optional
+from datetime import datetime
+from typing import Any, List, Optional, Tuple, Union
 
 import workers
 
@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 def exec_select(
     query: str, parameters: Tuple[Union[str, int], ...] = ()
-) -> List[Tuple]:
+) -> List[Tuple[Any, ...]]:
     assert query.startswith("SELECT")
     assert query.count("?") == len(parameters)
     results = []
@@ -67,13 +67,14 @@ logger.info("Connected! (Hopefully)")
 
 def subscribe(chat_id: int, subreddit: str, monthly_rank: int) -> bool:
     """
-        returns False if the user is already subscribed
+    returns False if the user is already subscribed
     """
     if is_subscribed(chat_id, subreddit):
         return False
 
     exec_sql(
-        "INSERT INTO subscriptions VALUES (?,?,?)", (chat_id, subreddit, monthly_rank),
+        "INSERT INTO subscriptions VALUES (?,?,?)",
+        (chat_id, subreddit, monthly_rank),
     )
     workers.start_worker(chat_id, subreddit, monthly_rank)
     return True
@@ -89,7 +90,7 @@ def is_subscribed(chat_id: int, subreddit: str) -> bool:
 
 def unsubscribe(chat_id: int, subreddit: str) -> bool:
     """
-        returns False if there is no matching subscription
+    returns False if there is no matching subscription
     """
     if not is_subscribed(chat_id, subreddit):
         return False
@@ -128,7 +129,8 @@ def all_subreddits() -> List[str]:
 
 def sub_followers(subreddit: str) -> List[Tuple[int, int]]:
     return exec_select(  # type: ignore
-        "SELECT chat_id, per_month FROM subscriptions WHERE subreddit=?", (subreddit,),
+        "SELECT chat_id, per_month FROM subscriptions WHERE subreddit=?",
+        (subreddit,),
     )
 
 
@@ -141,7 +143,8 @@ def user_subreddits(chat_id: int) -> List[str]:
 
 def user_subscriptions(chat_id: int) -> List[Tuple[str, int]]:
     return exec_select(  # type: ignore
-        "SELECT subreddit, per_month FROM subscriptions WHERE chat_id=?", (chat_id,),
+        "SELECT subreddit, per_month FROM subscriptions WHERE chat_id=?",
+        (chat_id,),
     )
 
 
@@ -200,6 +203,6 @@ def unavailable_subreddits() -> List[str]:
     return [sub for (sub,) in rows]
 
 
-def delete_user(chat_id):
+def delete_user(chat_id: int):
     for sub in user_subreddits(chat_id):
         unsubscribe(chat_id, sub)
