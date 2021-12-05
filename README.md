@@ -1,20 +1,16 @@
 # MySubredditsBot
 
-telegram.me/MySubredditsBot
-
-RSS reader for reddit (and maybe one day HN, Slashdot, etc...)
+Get top posts from selected subreddits
 
 
-# TODO:
- - Testing
- - Filter posts (by tag, keyword, regex, ...)
- - Inline keyboards pagination
- - Improve inline keyboard menus
- - Resize / split big images
- - Limit backlog on add
- - Throttle abusers
- - Add undo button to every action
- - Configure groups and channels via private chat
- - Send top unsent post exactly every period
- - CRUD UI (google sheets?)
- - ...
+Check it out here: [telegram.me/MySubredditsBot](https://telegram.me/MySubredditsBot)
+
+![image](https://user-images.githubusercontent.com/6978200/144713890-f85b9912-fdcf-4a77-a469-0728d319561b.png)
+
+
+
+### TODO:
+ - [ ] Set up tests
+ - [ ] Filter posts (by tag, keyword, regex, ...)
+ - [ ] CRUD UI with real time database sync
+ - [ ] ...
