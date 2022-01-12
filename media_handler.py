@@ -75,7 +75,7 @@ async def get_reddit_mp4_url(reddit_url: str) -> Optional[str]:
     # TODO get video size
     r = await asyncio.wait_for(CLIENT_SESSION.get(mpd, timeout=60), timeout=100)
     quality = next((q for q in reddit_qualities if q in r.text), "DASH_480")
-    return f"{url}/{quality}?source=fallback"
+    return f"{url}/{quality}.mp4?source=fallback"
 
 
 video_scrapers = {
