@@ -35,7 +35,7 @@ def create_tables():
     exec_sql(
         """CREATE TABLE IF NOT EXISTS subscriptions (
             chat_id INTEGER NOT NULL,
-            subreddit TEXT NOT NULL,
+            subreddit TEXT NOT NULL CHECK(subreddit LIKE "r/%" OR subreddit LIKE "u/%"),
             per_month INTEGER NOT NULL,
             PRIMARY KEY (chat_id, subreddit)
         );"""
