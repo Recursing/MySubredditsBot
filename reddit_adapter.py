@@ -166,7 +166,7 @@ async def get_posts_from_endpoint(
             raise SubredditBanned()
         if r_json["reason"] == "private":
             raise SubredditPrivate()
-    raise Exception(f"{r_json}")
+    raise Exception(f"{r_json} on {endpoint}")
 
 
 BASE_URL = "https://www.reddit.com"
