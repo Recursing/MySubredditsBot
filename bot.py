@@ -20,19 +20,21 @@ dp = telegram_adapter.dispatcher
 
 tracemalloc.start()
 
-
+LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 # Enable logging
 logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    format=LOG_FORMAT,
     filename="infolog.log",
     level=logging.INFO,
 )
 stderr_handler = logging.StreamHandler()
-stderr_handler.setFormatter(
-    logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-)
-
+stderr_handler.setFormatter(logging.Formatter(LOG_FORMAT))
 logging.getLogger().addHandler(stderr_handler)
+
+file_handler_error = logging.FileHandler("errors.log", mode="w")
+file_handler_error.setFormatter(logging.Formatter(LOG_FORMAT))
+file_handler_error.setLevel(logging.ERROR)
+logging.getLogger().addHandler(file_handler_error)
 
 
 class StateMachine(StatesGroup):
