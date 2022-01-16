@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+import itertools
 import logging
 import re
 import urllib.parse
 from datetime import datetime
-from typing import Any, List, Literal, Optional, Set, TypedDict
+from typing import Any, Coroutine, List, Literal, Optional, Set, TypedDict
 
 import httpx
 
@@ -202,17 +203,21 @@ async def get_top_posts(
 
 
 async def get_posts(subscription: str, per_month: int) -> List[Post | Comment]:
-    posts: List[Post | Comment] = []
+    tasks: List[Coroutine[Any, Any, List[Post | Comment]]] = []
     if per_month < 99:
-        posts.extend(await get_top_posts(subscription, "month", per_month))
+        tasks.append(get_top_posts(subscription, "month", per_month))
     if per_month // 4 < 99:
         limit = per_month // 4
-        posts.extend(await get_top_posts(subscription, "week", limit))
+        tasks.append(get_top_posts(subscription, "week", limit))
     if per_month // 31 < 99:
         limit = per_month // 31
-        posts.extend(await get_top_posts(subscription, "day", limit))
+        tasks.append(get_top_posts(subscription, "day", limit))
+    if is_subreddit(subscription):
+        tasks.append(hot_posts(subscription, min(per_month // 10, 99)))
 
-    posts.extend(await hot_posts(subscription, min(per_month // 10, 99)))
+    posts: List[Post | Comment] = list(
+        itertools.chain.from_iterable(await asyncio.gather(*tasks))
+    )
 
     def get_score(post: Post | Comment):
         return post["score"]

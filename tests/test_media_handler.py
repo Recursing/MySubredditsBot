@@ -1,5 +1,6 @@
-from .. import media_handler
 import pytest
+
+from .. import media_handler
 
 
 @pytest.mark.asyncio

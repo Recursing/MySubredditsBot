@@ -1,5 +1,7 @@
 from typing import Any
+
 import pytest
+
 from .. import reddit_adapter
 
 
@@ -126,3 +128,9 @@ def test_formatted_comment(patch_datetime_now: Any):
         '<a href="https://old.reddit.com/r/slatestarcodex/comments/s1vbb0/what_are_some_good_sscadjacent_groups_that_have/hscdq7x/?context=4">'
         "Context</a> - +1 in 4d 7h"
     )
+
+
+@pytest.mark.asyncio
+async def test_get_user_posts():
+    # Just check this doesn't raise an exception
+    await reddit_adapter.get_posts("u/thisisbillgates", 10)
