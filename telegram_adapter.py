@@ -5,10 +5,12 @@ import logging
 import time
 import traceback
 from functools import wraps
-from typing import Awaitable, Callable
+from typing import Any, Awaitable, Callable
 
 from aiogram import Bot, Dispatcher, exceptions
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from aiogram.types.inline_keyboard import InlineKeyboardMarkup
+from aiogram.types.message import Message
 
 import credentials
 import media_handler
@@ -17,20 +19,6 @@ import subscriptions_manager
 
 bot = Bot(credentials.BOT_API_KEY)
 dispatcher = Dispatcher(bot, storage=MemoryStorage())
-
-
-class mockBot:
-    def __getattribute__(self, attr):
-        print(f"Called bot.{attr}")
-
-        async def mock_fun(*args, **kwargs):
-            print(f"With: {args} {kwargs}")
-
-        return mock_fun
-
-
-# TODO proper mocking for tests
-# bot = mockBot()
 
 
 def format_traceback(e: Exception) -> str:
@@ -124,7 +112,9 @@ async def send_media(chat_id: int, url: str, caption: str) -> bool:
     return True
 
 
-async def edit_message(text: str, chat_id: int, message_id: int, reply_markup):
+async def edit_message(
+    text: str, chat_id: int, message_id: int, reply_markup: InlineKeyboardMarkup
+):
     try:
         await bot.edit_message_text(
             text=text,
@@ -138,7 +128,7 @@ async def edit_message(text: str, chat_id: int, message_id: int, reply_markup):
         logging.error(f"Exception editing message: {e!r}")
 
 
-async def reply(message, *args, **kwargs):
+async def reply(message: Message, *args: Any, **kwargs: Any):
     kwargs["reply_to_message_id"] = message.message_id
     await send_message(message.chat.id, *args, **kwargs)
 
@@ -150,13 +140,12 @@ async def send_post(
         return
     # TODO: handle images and gifs
     try:
-        is_post = content["kind"] == "t3"
-        if is_post:
+        if content["kind"] == "t3":
             formatted_post = reddit_adapter.formatted_post(content)
         else:
             formatted_post = reddit_adapter.formatted_comment(content)
         sent = False
-        if is_post and await media_handler.contains_media(content["url"]):
+        if content["kind"] == "t3" and media_handler.contains_media(content["url"]):
             sent = await send_media(chat_id, content["url"], formatted_post)
         else:
             sent = await send_message(chat_id, formatted_post, parse_mode="HTML")

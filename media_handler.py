@@ -50,7 +50,7 @@ async def get_gfycat_mp4_url(gfycat_url: str) -> Optional[str]:
     try:
         r_json = r.json()
         assert isinstance(r_json, dict)
-        urls = r_json["gfyItem"]
+        urls: dict[str, str] = r_json["gfyItem"]
         return urls["mp4Url"]
     except Exception as e:
         logging.error(f"Invalid data from gfycat {gfycat_url} {e!r}")
@@ -112,7 +112,7 @@ async def fix_url(url: str) -> Optional[str]:
 
 
 async def send_media(bot: Bot, chat_id: int, url: str, caption: str) -> None:
-    assert await contains_media(url)
+    assert contains_media(url)
     media_type = get_media_type(url)
 
     maybe_url = await fix_url(url)
@@ -137,7 +137,7 @@ async def send_media(bot: Bot, chat_id: int, url: str, caption: str) -> None:
         await bot.send_message(chat_id, caption, parse_mode="HTML")
 
 
-async def contains_media(url: str) -> bool:
+def contains_media(url: str) -> bool:
     media_extensions = image_extensions + animation_extensions
     known_extensions = media_extensions + document_extensions + ignore_extensions
     extension = get_extension(url)
