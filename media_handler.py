@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 import httpx
 from aiogram import Bot, exceptions
 
-image_extensions = ["jpg", "png", "webp"]
+image_extensions = ["jpg", "png", "webp", "jpeg"]
 animation_extensions = ["gif", "gifv", "mp4", "mpeg"]
 document_extensions = ["pdf", "txt", "md"]
 ignore_extensions = [
@@ -27,12 +27,21 @@ ignore_extensions = [
 CLIENT_SESSION = httpx.AsyncClient()
 
 
-async def get_streamable_mp4_url(streamable_url: str) -> Optional[str]:
-    url_pattern = r"https://[a-z\-]+\.streamable\.com/video/mp4/.*?\.mp4\?token=.*?(?:&amp;|&)expires=\d+"
-    r = await asyncio.wait_for(
-        CLIENT_SESSION.get(streamable_url, timeout=60), timeout=100
+async def GET(
+    url: str, httpx_timeout: int = 60, total_timeout: int = 120
+) -> httpx.Response:
+    return await asyncio.wait_for(
+        CLIENT_SESSION.get(url, timeout=httpx_timeout), timeout=total_timeout
     )
-    match = re.search(url_pattern, r.text, re.MULTILINE)
+
+
+async def get_streamable_mp4_url(streamable_url: str) -> Optional[str]:
+    url_pattern = re.compile(
+        r'https://[a-z\-]+\.streamable\.com/video/mp4/.*?\.mp4\?Expires=\d+&Signature=.*?(?:&amp;|&)[^"]*',
+        re.MULTILINE,
+    )
+    r = await GET(streamable_url)
+    match = url_pattern.search(r.text)
     if match:
         return match.group().replace("&amp;", "&")
 
@@ -43,10 +52,7 @@ async def get_streamable_mp4_url(streamable_url: str) -> Optional[str]:
 async def get_gfycat_mp4_url(gfycat_url: str) -> Optional[str]:
     id_group = r"gfycat\.com\/(?:gifs\/)?(?:detail\/)?(?:amp\/)?(?:ru\/)?(?:fr\/)?(\w+)"
     gfyid = re.findall(id_group, gfycat_url)[0]
-    r = await asyncio.wait_for(
-        CLIENT_SESSION.get(f"https://api.gfycat.com/v1/gfycats/{gfyid}", timeout=60),
-        timeout=100,
-    )
+    r = await GET(f"https://api.gfycat.com/v1/gfycats/{gfyid}")
     try:
         r_json = r.json()
         assert isinstance(r_json, dict)
@@ -71,9 +77,8 @@ async def get_reddit_mp4_url(reddit_url: str) -> Optional[str]:
         "DASH_1080",
     ]
     url = reddit_url.rstrip("/")
-    mpd = url + "/DASHPlaylist.mpd"
     # TODO get video size
-    r = await asyncio.wait_for(CLIENT_SESSION.get(mpd, timeout=60), timeout=100)
+    r = await GET(f"{url}/DASHPlaylist.mpd")
     quality = next((q for q in reddit_qualities if q in r.text), "DASH_480")
     return f"{url}/{quality}.mp4?source=fallback"
 
