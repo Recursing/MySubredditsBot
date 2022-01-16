@@ -40,6 +40,7 @@ class Comment(TypedDict):
 
 def format_time_delta(delta_seconds: float) -> str:
     delta_seconds = int(delta_seconds)
+    assert delta_seconds >= 0
     days = delta_seconds // (86400)
     hours = (delta_seconds % 86400) // 3600
     minutes = (delta_seconds % 3600) // 60
@@ -116,7 +117,7 @@ def formatted_comment(comment: Comment) -> str:
         comment["author"],
         urllib.parse.quote(comment["link_url"], safe="/:?=&#"),
         comment["link_title"],
-        comment["body"],
+        markdown_to_html(comment["body"]),
         comment["permalink"],
         comment["score"],
         time_ago,
@@ -159,8 +160,7 @@ async def get_posts_from_endpoint(
         children: Any = r_json["data"]["children"]
         for child in children:
             child["data"]["kind"] = child["kind"]
-        data = [c["data"] for c in children if c["kind"] in ("t1", "t3")]
-        return data
+        return [c["data"] for c in children if c["kind"] in ("t1", "t3")]
     if "error" in r_json and "reason" in r_json:
         if r_json["reason"] == "banned" or r_json["reason"] == "quarantined":
             raise SubredditBanned()
@@ -236,7 +236,7 @@ subreddit_rx = re.compile(r"\Ar/[A-Za-z0-9][A-Za-z0-9_]{2,20}\Z")
 
 
 def valid_subscription(text: str) -> bool:
-    return bool(subreddit_rx.match(text)) or bool(user_rx.match(text))
+    return bool(subreddit_rx.fullmatch(text) or user_rx.fullmatch(text))
 
 
 async def get_posts_error(sub: str, monthly_rank: int) -> Optional[str]:
@@ -246,9 +246,8 @@ async def get_posts_error(sub: str, monthly_rank: int) -> Optional[str]:
         posts = await get_posts(sub, monthly_rank)
         if posts and sum(post["over_18"] for post in posts) / len(posts) >= 0.8:
             return f"{sub} seems to be a porn subreddit, if that's not the case contact @recursing"
-        if posts:
-            return None
-        return f"{sub} does not exist or is empty or something"
+        if not posts:
+            return f"{sub} does not exist or is empty or something"
     except SubredditBanned:
         return f"{sub} has been banned"
     except SubredditPrivate:
