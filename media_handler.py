@@ -1,11 +1,19 @@
+from __future__ import annotations
+
 import asyncio
+import html
 import logging
 import re
-from typing import Optional
+from typing import List, Optional, TYPE_CHECKING
+
 from urllib.parse import urlparse
 
 import httpx
 from aiogram import Bot, exceptions
+from aiogram.types import InputMediaPhoto
+
+if TYPE_CHECKING:
+    from reddit_adapter import Gallery, Post
 
 image_extensions = ["jpg", "png", "webp", "jpeg"]
 animation_extensions = ["gif", "gifv", "mp4", "mpeg"]
@@ -115,6 +123,35 @@ async def fix_url(url: str) -> Optional[str]:
         if maybe_url and domain in maybe_url:
             return await scraper(maybe_url)
     return maybe_url
+
+
+def is_gallery(post: Post) -> bool:
+    return bool(post.get("is_gallery"))
+
+
+def get_gallery_image_urls(gallery: Gallery) -> List[str]:
+    image_ids = [item["media_id"] for item in gallery["gallery_data"]["items"]]
+    image_urls = [
+        gallery["media_metadata"][media_id]["s"]["u"] for media_id in image_ids
+    ]
+    return [html.unescape(u) for u in image_urls]
+
+
+async def send_gallery(bot: Bot, chat_id: int, post: Post, caption: str) -> None:
+    assert is_gallery(post)
+    gallery: Gallery = post  # type:ignore
+    image_urls = get_gallery_image_urls(gallery)
+    if not image_urls:
+        raise ValueError(f"Cannot get image urls from {post}")
+    if len(image_urls) == 1:
+        return await send_media(bot, chat_id, url=image_urls[0], caption=caption)
+    if len(image_urls) > 10:
+        image_urls = image_urls[:10]
+    first_image_url, *image_urls = image_urls
+    media_group = [InputMediaPhoto(first_image_url, caption=caption, parse_mode="HTML")]
+    media_group.extend([InputMediaPhoto(url) for url in image_urls])
+
+    await bot.send_media_group(chat_id=chat_id, media=media_group)
 
 
 async def send_media(bot: Bot, chat_id: int, url: str, caption: str) -> None:

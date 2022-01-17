@@ -112,6 +112,13 @@ async def send_media(chat_id: int, url: str, caption: str) -> bool:
     return True
 
 
+@catch_telegram_exceptions
+async def send_gallery(chat_id: int, post: reddit_adapter.Post, caption: str) -> bool:
+    # parse_mode is always HTML
+    await media_handler.send_gallery(bot, chat_id, post, caption)
+    return True
+
+
 async def edit_message(
     text: str, chat_id: int, message_id: int, reply_markup: InlineKeyboardMarkup
 ):
@@ -145,7 +152,9 @@ async def send_post(
         else:
             formatted_post = reddit_adapter.formatted_comment(content)
         sent = False
-        if content["kind"] == "t3" and media_handler.contains_media(content["url"]):
+        if content["kind"] == "t3" and media_handler.is_gallery(content):
+            sent = await send_gallery(chat_id, content, formatted_post)
+        elif content["kind"] == "t3" and media_handler.contains_media(content["url"]):
             sent = await send_media(chat_id, content["url"], formatted_post)
         else:
             sent = await send_message(chat_id, formatted_post, parse_mode="HTML")

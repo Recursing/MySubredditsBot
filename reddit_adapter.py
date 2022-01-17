@@ -6,7 +6,7 @@ import logging
 import re
 import urllib.parse
 from datetime import datetime
-from typing import Any, Coroutine, List, Literal, Optional, Set, TypedDict
+from typing import Any, Coroutine, Dict, List, Literal, Optional, Set, TypedDict
 
 import httpx
 
@@ -23,6 +23,30 @@ class Post(TypedDict):
     subreddit: str
     title: str
     url: str
+    is_gallery: bool | None
+
+
+class GalleryDataItem(TypedDict):
+    media_id: str
+
+
+class GalleryData(TypedDict):
+    items: List[GalleryDataItem]
+
+
+class MediaData(TypedDict):
+    u: str
+
+
+class MediaMetadata(TypedDict):
+    s: MediaData
+
+
+class Gallery(TypedDict):
+    title: str
+    is_gallery: Literal[True]
+    media_metadata: Dict[str, MediaMetadata]
+    gallery_data: GalleryData
 
 
 class Comment(TypedDict):
