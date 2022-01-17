@@ -147,7 +147,9 @@ async def get_posts_from_endpoint(
     r_json = None
     response = None
     try:
-        response = await CLIENT_SESSION.get(endpoint, headers=headers, timeout=60)
+        response = await CLIENT_SESSION.get(
+            endpoint, headers=headers, timeout=60, follow_redirects=True
+        )
         r_json = response.json()
         if not isinstance(r_json, dict):
             raise InvalidAnswerFromEndpoint()

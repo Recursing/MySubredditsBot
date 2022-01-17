@@ -31,7 +31,8 @@ async def GET(
     url: str, httpx_timeout: int = 60, total_timeout: int = 120
 ) -> httpx.Response:
     return await asyncio.wait_for(
-        CLIENT_SESSION.get(url, timeout=httpx_timeout), timeout=total_timeout
+        CLIENT_SESSION.get(url, timeout=httpx_timeout, follow_redirects=True),
+        timeout=total_timeout,
     )
 
 
