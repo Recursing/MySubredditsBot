@@ -6,7 +6,8 @@ import logging
 import re
 import urllib.parse
 from datetime import datetime
-from typing import Any, Coroutine, Dict, List, Literal, Optional, Set, TypedDict
+from typing import (Any, Coroutine, Dict, List, Literal, Optional, Set,
+                    TypedDict)
 
 import httpx
 
@@ -35,11 +36,14 @@ class GalleryData(TypedDict):
 
 
 class MediaData(TypedDict):
+    x: int
+    y: int
     u: str
 
 
 class MediaMetadata(TypedDict):
     s: MediaData
+    p: List[MediaData]
 
 
 class Gallery(TypedDict):

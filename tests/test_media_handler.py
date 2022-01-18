@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import cast, TYPE_CHECKING
-import pytest
 import asyncio
+from typing import TYPE_CHECKING
+
+import pytest
 
 if TYPE_CHECKING:
     from reddit_adapter import Gallery, Post
@@ -747,5 +748,5 @@ async def test_gallery():
         "https://preview.redd.it/mwqoyovjiua81.jpg?width=800&format=pjpg&auto=webp&s=b829a1d3ccf6ed30437d691390973140e0cdf55d",
         "https://preview.redd.it/x8or3pvjiua81.jpg?width=800&format=pjpg&auto=webp&s=69de14211f60f9570a8ffa2c2183ba224344f6ad",
         "https://preview.redd.it/2b5c8rvjiua81.jpg?width=800&format=pjpg&auto=webp&s=f5d7332c4c8a1a0fcc436bf977c37c0555a53c07",
-        "https://preview.redd.it/y80e83wjiua81.jpg?width=1440&format=pjpg&auto=webp&s=77447641333d258ba92cf493a42da72b885f3d90",
+        "https://preview.redd.it/y80e83wjiua81.jpg?width=1080&crop=smart&auto=webp&s=73d0cf1e99f1d96ce3ad5fe6449e8a309ca2dae7",
     ]

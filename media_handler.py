@@ -4,8 +4,7 @@ import asyncio
 import html
 import logging
 import re
-from typing import List, Optional, TYPE_CHECKING
-
+from typing import TYPE_CHECKING, List, Optional
 from urllib.parse import urlparse
 
 import httpx
@@ -131,9 +130,14 @@ def is_gallery(post: Post) -> bool:
 
 def get_gallery_image_urls(gallery: Gallery) -> List[str]:
     image_ids = [item["media_id"] for item in gallery["gallery_data"]["items"]]
-    image_urls = [
-        gallery["media_metadata"][media_id]["s"]["u"] for media_id in image_ids
-    ]
+
+    def get_url(media_id: str) -> str:
+        full_size = gallery["media_metadata"][media_id]["s"]
+        if full_size["x"] > 1200 or full_size["y"] > 1200:
+            full_size = gallery["media_metadata"][media_id]["p"][-1]
+        return full_size["u"]
+
+    image_urls = [get_url(media_id) for media_id in image_ids]
     return [html.unescape(u) for u in image_urls]
 
 
