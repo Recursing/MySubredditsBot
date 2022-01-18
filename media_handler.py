@@ -4,7 +4,7 @@ import asyncio
 import html
 import logging
 import re
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List, Literal, Optional
 from urllib.parse import urlparse
 
 import httpx
@@ -105,7 +105,7 @@ def get_extension(url: str) -> str:
     return path.split(".")[-1].lower() if "." in path else ""
 
 
-def get_media_type(url: str) -> Optional[str]:
+def get_media_type(url: str) -> Literal["VID", "IMG", None]:
     extension = get_extension(url)
     if extension in image_extensions:
         return "IMG"
@@ -148,7 +148,8 @@ async def send_gallery(bot: Bot, chat_id: int, post: Post, caption: str) -> None
     if not image_urls:
         raise ValueError(f"Cannot get image urls from {post}")
     if len(image_urls) == 1:
-        return await send_media(bot, chat_id, url=image_urls[0], caption=caption)
+        await bot.send_photo(chat_id, image_urls[0], caption=caption, parse_mode="HTML")
+        return
     if len(image_urls) > 10:
         image_urls = image_urls[:10]
     first_image_url, *image_urls = image_urls
@@ -158,30 +159,42 @@ async def send_gallery(bot: Bot, chat_id: int, post: Post, caption: str) -> None
     await bot.send_media_group(chat_id=chat_id, media=media_group)
 
 
-async def send_media(bot: Bot, chat_id: int, url: str, caption: str) -> None:
-    assert contains_media(url)
-    media_type = get_media_type(url)
+async def send_image(bot: Bot, chat_id: int, post: Post, caption: str) -> None:
+    image_url = post["url"]
+    preview_images = post.get("preview", {}).get("images")
+    resolutions = preview_images and preview_images[0].get("resolutions")
+    if resolutions:
+        image_url = html.unescape(resolutions[-1]["url"])
+    await bot.send_photo(
+        chat_id=chat_id, photo=image_url, caption=caption, parse_mode="HTML"
+    )
 
-    maybe_url = await fix_url(url)
 
-    if maybe_url is None or media_type is None:
+async def send_video(bot: Bot, chat_id: int, post: Post, caption: str) -> None:
+    maybe_url = await fix_url(post["url"])
+    if maybe_url is None:
         await bot.send_message(chat_id, caption, parse_mode="HTML")
         return
-
     try:
-        if media_type == "IMG":
-            await bot.send_photo(chat_id, maybe_url, caption=caption, parse_mode="HTML")
-        elif media_type == "VID":
-            maybe_url = maybe_url.replace(".gifv", ".mp4")
-            await bot.send_animation(
-                chat_id,
-                maybe_url,
-                caption=caption,
-                parse_mode="HTML",
-            )
+        maybe_url = maybe_url.replace(".gifv", ".mp4")
+        await bot.send_animation(
+            chat_id,
+            maybe_url,
+            caption=caption,
+            parse_mode="HTML",
+        )
     except exceptions.BadRequest as e:
-        logging.error(f"Error sending media from {maybe_url} {e!r}")
+        logging.error(f"Error {e!r} sending video for {post}")
         await bot.send_message(chat_id, caption, parse_mode="HTML")
+
+
+async def send_media(bot: Bot, chat_id: int, post: Post, caption: str) -> None:
+    media_type = get_media_type(post["url"])
+    assert media_type is not None
+    if media_type == "IMG":
+        await send_image(bot, chat_id, post, caption)
+    elif media_type == "VID":
+        await send_video(bot, chat_id, post, caption)
 
 
 def contains_media(url: str) -> bool:
