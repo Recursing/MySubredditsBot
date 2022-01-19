@@ -20,7 +20,7 @@ dp = telegram_adapter.dispatcher
 
 tracemalloc.start()
 
-LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+LOG_FORMAT = "%(asctime)s - %(pathname)s:%(lineno)d - %(levelname)s - %(message)s"
 # Enable logging
 logging.basicConfig(
     format=LOG_FORMAT,
