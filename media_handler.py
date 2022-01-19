@@ -131,14 +131,28 @@ def is_gallery(post: Post) -> bool:
 def get_gallery_image_urls(gallery: Gallery) -> List[str]:
     image_ids = [item["media_id"] for item in gallery["gallery_data"]["items"]]
 
-    def get_url(media_id: str) -> str:
-        full_size = gallery["media_metadata"][media_id]["s"]
-        if full_size["x"] > 1200 or full_size["y"] > 1200:
-            full_size = gallery["media_metadata"][media_id]["p"][-1]
-        return full_size["u"]
+    def get_url(media_id: str) -> str | None:
+        media_info = gallery.get("media_metadata", {}).get(media_id)
+        if not media_info:
+            return None
+        full_size = media_info.get("s")
+        if (
+            full_size
+            and full_size["x"] <= 1200
+            and full_size["y"] <= 1200
+            and full_size.get("u")
+        ):
+            return full_size["u"]
+        previews = media_info.get("p")
+        if not previews:
+            return None
+        for preview in reversed(previews):
+            if preview.get("u"):
+                return preview["u"]
+        return None
 
     image_urls = [get_url(media_id) for media_id in image_ids]
-    return [html.unescape(u) for u in image_urls]
+    return [html.unescape(u) for u in image_urls if u]
 
 
 async def send_gallery(bot: Bot, chat_id: int, post: Post, caption: str) -> None:

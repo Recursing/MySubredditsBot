@@ -34,21 +34,6 @@ def test_gallery():
                 "m": "image/jpg",
                 "p": [
                     {
-                        "y": 108,
-                        "x": 108,
-                        "u": "https://preview.redd.it/x8or3pvjiua81.jpg?width=108&crop=smart&auto=webp&s=5e5945b3beaedef70bb9af57c297abe8b95529ba",
-                    },
-                    {
-                        "y": 216,
-                        "x": 216,
-                        "u": "https://preview.redd.it/x8or3pvjiua81.jpg?width=216&crop=smart&auto=webp&s=395a964856a37954b90379b2f84498bf7f36ebf3",
-                    },
-                    {
-                        "y": 320,
-                        "x": 320,
-                        "u": "https://preview.redd.it/x8or3pvjiua81.jpg?width=320&crop=smart&auto=webp&s=6efb6422b05c024f7aa3f27326ca140a708605da",
-                    },
-                    {
                         "y": 640,
                         "x": 640,
                         "u": "https://preview.redd.it/x8or3pvjiua81.jpg?width=640&crop=smart&auto=webp&s=730025cfa3c9b7a895d775691dc29eb20fc55451",
@@ -72,16 +57,6 @@ def test_gallery():
                         "u": "https://preview.redd.it/mwqoyovjiua81.jpg?width=108&crop=smart&auto=webp&s=aaae14749947465441cf76c68707a4ab76e68b13",
                     },
                     {
-                        "y": 216,
-                        "x": 216,
-                        "u": "https://preview.redd.it/mwqoyovjiua81.jpg?width=216&crop=smart&auto=webp&s=e4a0aba82447127b0f835407334c691c68032452",
-                    },
-                    {
-                        "y": 320,
-                        "x": 320,
-                        "u": "https://preview.redd.it/mwqoyovjiua81.jpg?width=320&crop=smart&auto=webp&s=a738dea7687e0f9587d8b87509a2b3b9c73b0baf",
-                    },
-                    {
                         "y": 640,
                         "x": 640,
                         "u": "https://preview.redd.it/mwqoyovjiua81.jpg?width=640&crop=smart&auto=webp&s=961796b8c69823864843b5564af0e5b584eb0ecd",
@@ -99,21 +74,6 @@ def test_gallery():
                 "e": "Image",
                 "m": "image/jpg",
                 "p": [
-                    {
-                        "y": 108,
-                        "x": 108,
-                        "u": "https://preview.redd.it/2b5c8rvjiua81.jpg?width=108&crop=smart&auto=webp&s=e01301baf2851068081701e56cf7dd7ea82cc0e7",
-                    },
-                    {
-                        "y": 216,
-                        "x": 216,
-                        "u": "https://preview.redd.it/2b5c8rvjiua81.jpg?width=216&crop=smart&auto=webp&s=002579b9550f37567ff8503ca0d92b0ffe5a7358",
-                    },
-                    {
-                        "y": 320,
-                        "x": 320,
-                        "u": "https://preview.redd.it/2b5c8rvjiua81.jpg?width=320&crop=smart&auto=webp&s=2e5f5142c366d8ad53f166da8eab4f6612e139e9",
-                    },
                     {
                         "y": 640,
                         "x": 640,
@@ -133,21 +93,6 @@ def test_gallery():
                 "m": "image/jpg",
                 "p": [
                     {
-                        "y": 108,
-                        "x": 108,
-                        "u": "https://preview.redd.it/mv3giovjiua81.jpg?width=108&crop=smart&auto=webp&s=a898e660ad24b80f524486be2ca2506ec2e6796a",
-                    },
-                    {
-                        "y": 216,
-                        "x": 216,
-                        "u": "https://preview.redd.it/mv3giovjiua81.jpg?width=216&crop=smart&auto=webp&s=279de5ec1617c97900b8adc855ff03bffcf4bf2b",
-                    },
-                    {
-                        "y": 320,
-                        "x": 320,
-                        "u": "https://preview.redd.it/mv3giovjiua81.jpg?width=320&crop=smart&auto=webp&s=250b3aba0cc1f691fa8acf093839618735851795",
-                    },
-                    {
                         "y": 640,
                         "x": 640,
                         "u": "https://preview.redd.it/mv3giovjiua81.jpg?width=640&crop=smart&auto=webp&s=8bcbb161f36d2cdae9c1d65d208993607d1243a9",
@@ -165,31 +110,6 @@ def test_gallery():
                 "e": "Image",
                 "m": "image/jpg",
                 "p": [
-                    {
-                        "y": 108,
-                        "x": 108,
-                        "u": "https://preview.redd.it/y80e83wjiua81.jpg?width=108&crop=smart&auto=webp&s=d65a9697e86f5947c8fa50dfba362cd84010d59c",
-                    },
-                    {
-                        "y": 216,
-                        "x": 216,
-                        "u": "https://preview.redd.it/y80e83wjiua81.jpg?width=216&crop=smart&auto=webp&s=e72ad0b1dd46afc2b800d68b37b9a3759d88ed3f",
-                    },
-                    {
-                        "y": 320,
-                        "x": 320,
-                        "u": "https://preview.redd.it/y80e83wjiua81.jpg?width=320&crop=smart&auto=webp&s=860ff92ad5e99d7ea73db8811b87bd9fa323710f",
-                    },
-                    {
-                        "y": 640,
-                        "x": 640,
-                        "u": "https://preview.redd.it/y80e83wjiua81.jpg?width=640&crop=smart&auto=webp&s=f9877b53db9dc64a8b6b3c7e725483d7282d07c6",
-                    },
-                    {
-                        "y": 960,
-                        "x": 960,
-                        "u": "https://preview.redd.it/y80e83wjiua81.jpg?width=960&crop=smart&auto=webp&s=8bee0d5745d4fa78c6fa3ca45bc0ba2cf314c81c",
-                    },
                     {
                         "y": 1080,
                         "x": 1080,
@@ -227,6 +147,71 @@ def test_gallery():
     ]
 
 
+def test_gallery_with_missing_image():
+    # Apparently this can happen :shrugs
+    gallery_post: Post = {  # type: ignore
+        "kind": "t3",
+        "subreddit": "phclassifieds",
+        "selftext": "",
+        "is_gallery": True,
+        "title": "Male cats for adoption! Location: Dasma, Cavite",
+        "media_metadata": {
+            "u3dxaipziic81": {
+                "status": "valid",
+                "e": "Image",
+                "m": "image/jpg",
+                "p": [
+                    {
+                        "y": 1440,
+                        "x": 1080,
+                        "u": "https://preview.redd.it/u3dxaipziic81.jpg?width=1080&amp;crop=smart&amp;auto=webp&amp;s=187b759018e50c9ca6019891e816654cbfa30e3c",
+                    },
+                ],
+                "s": {
+                    "y": 4624,
+                    "x": 3468,
+                    "u": "https://preview.redd.it/u3dxaipziic81.jpg?width=3468&amp;format=pjpg&amp;auto=webp&amp;s=40193d5df8e08882b95fed9943873ba6cd0c01fe",
+                },
+                "id": "u3dxaipziic81",
+            },
+            "315vp420jic81": {
+                "status": "valid",
+                "e": "Image",
+                "m": "image/jpg",
+                "p": [
+                    {
+                        "y": 810,
+                        "x": 1080,
+                        "u": "https://preview.redd.it/315vp420jic81.jpg?width=1080&amp;crop=smart&amp;auto=webp&amp;s=42ed0cde863455f8752ebc61277bfd7529bf116d",
+                    },
+                ],
+                "s": {
+                    "y": 3468,
+                    "x": 4624,
+                    "u": "https://preview.redd.it/315vp420jic81.jpg?width=4624&amp;format=pjpg&amp;auto=webp&amp;s=faab29e0c2fd5f58b099edc36d7a74c912a01fc4",
+                },
+                "id": "315vp420jic81",
+            },
+            "cx9099hziic81": {"status": "failed"},
+        },
+        "gallery_data": {
+            "items": [
+                {"media_id": "cx9099hziic81", "id": 103482769},
+                {"media_id": "u3dxaipziic81", "id": 103482770},
+                {"media_id": "315vp420jic81", "id": 103482771},
+            ]
+        },
+        "url": "https://www.reddit.com/gallery/s784v9",
+    }
+
+    assert media_handler.is_gallery(gallery_post)
+    gallery: Gallery = gallery_post  # type: ignore
+    assert media_handler.get_gallery_image_urls(gallery) == [
+        "https://preview.redd.it/u3dxaipziic81.jpg?width=1080&crop=smart&auto=webp&s=187b759018e50c9ca6019891e816654cbfa30e3c",
+        "https://preview.redd.it/315vp420jic81.jpg?width=1080&crop=smart&auto=webp&s=42ed0cde863455f8752ebc61277bfd7529bf116d",
+    ]
+
+
 @pytest.mark.asyncio
 async def test_large_image():
     post: Post = {  # type: ignore
@@ -247,21 +232,6 @@ async def test_large_image():
                             "url": "https://preview.redd.it/6780jwapt9b81.jpg?width=108&amp;crop=smart&amp;auto=webp&amp;s=fad3a88652e1183693f72980710c13dc18771b6e",
                             "width": 108,
                             "height": 144,
-                        },
-                        {
-                            "url": "https://preview.redd.it/6780jwapt9b81.jpg?width=216&amp;crop=smart&amp;auto=webp&amp;s=57e8132ae3d023889a5ef68b3eff66723a0e09c2",
-                            "width": 216,
-                            "height": 288,
-                        },
-                        {
-                            "url": "https://preview.redd.it/6780jwapt9b81.jpg?width=320&amp;crop=smart&amp;auto=webp&amp;s=622587929f21160caf5a9b3d607fb74db413ffbf",
-                            "width": 320,
-                            "height": 426,
-                        },
-                        {
-                            "url": "https://preview.redd.it/6780jwapt9b81.jpg?width=640&amp;crop=smart&amp;auto=webp&amp;s=b4b418231c1fb83db85e812863cff64454ef9409",
-                            "width": 640,
-                            "height": 853,
                         },
                         {
                             "url": "https://preview.redd.it/6780jwapt9b81.jpg?width=960&amp;crop=smart&amp;auto=webp&amp;s=5fdfa114c9d894aeaa431ef4c0c291db88a31199",
