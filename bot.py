@@ -260,8 +260,8 @@ async def change_threshold(
             new_monthly = current_monthly + 1
         else:
             new_monthly = current_monthly - 1
-    if new_monthly > 3000:
-        new_monthly = 3000
+    if new_monthly > 300:
+        new_monthly = 300
         if current_monthly == new_monthly:
             return
     if new_monthly < 1:

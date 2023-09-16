@@ -73,7 +73,7 @@ def subscribe(chat_id: int, subreddit: str, monthly_rank: int) -> bool:
         return False
 
     exec_sql(
-        "INSERT INTO subscriptions VALUES (?,?,?)",
+        "INSERT INTO subscriptions (chat_id, subreddit, per_month) VALUES (?,?,?)",
         (chat_id, subreddit, monthly_rank),
     )
     workers.start_worker(chat_id, subreddit, monthly_rank)

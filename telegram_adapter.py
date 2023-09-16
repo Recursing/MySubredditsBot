@@ -51,7 +51,7 @@ def catch_telegram_exceptions(
     async def wrap(*args, **kwargs) -> bool:
         try:
             return await func(*args, **kwargs)
-        except (exceptions.Unauthorized, exceptions.ChatNotFound) as e:
+        except (exceptions.Unauthorized, exceptions.ChatNotFound, exceptions.BadRequest) as e:
             chat_id = kwargs.get("chat_id") or args[0]
             unsub_reasons = [
                 "chat not found",
@@ -59,6 +59,8 @@ def catch_telegram_exceptions(
                 "user is deactivated",
                 "chat not found",
                 "bot was kicked",
+                "not enough rights to send",
+                "community may contain discussions and content pertaining to drug use and abuse",
                 "bot is not a member",
                 "need administrator rights",
             ]
@@ -93,7 +95,7 @@ def catch_telegram_exceptions(
         ) as e:
             await send_exception(e, f"TelegramApiError {args} {kwargs}")
             logging.error(f"{e!r} Telegram error, sleeping")
-            await asyncio.sleep(60)  # Telegram maybe down, sleep a while
+            time.sleep(60) # Telegram maybe down, sleep a while
         return False
 
     return wrap

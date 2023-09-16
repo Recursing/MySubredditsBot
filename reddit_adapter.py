@@ -6,10 +6,31 @@ import logging
 import re
 import urllib.parse
 from datetime import datetime
-from typing import (Any, Coroutine, Dict, List, Literal, Optional, Set,
-                    TypedDict)
+from typing import Any, Coroutine, Dict, List, Literal, Optional, Set, TypedDict
+from functools import lru_cache
+import time
 
 import httpx
+
+from credentials import (
+    REDDIT_CLIENT_ID,
+    REDDIT_CLIENT_SECRET,
+    REDDIT_PASSWORD,
+    REDDIT_USERNAME,
+)
+
+
+@lru_cache(maxsize=2)
+def get_token(_hour):
+    url = "https://www.reddit.com/api/v1/access_token"
+    data = {
+        "grant_type": "password",
+        "username": REDDIT_USERNAME,
+        "password": REDDIT_PASSWORD,
+    }
+    auth = (REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET)
+    response = httpx.post(url, data=data, auth=auth)
+    return response.json()["access_token"]
 
 
 class Post(TypedDict):
@@ -130,7 +151,6 @@ def formatted_post(post: Post) -> str:
 
 
 def formatted_comment(comment: Comment) -> str:
-
     time_ago = format_time_delta(datetime.now().timestamp() - comment["created_utc"])
 
     if len(comment["body"]) > 2100:
@@ -165,27 +185,34 @@ class InvalidAnswerFromEndpoint(Exception):
     pass
 
 
-CLIENT_SESSION = httpx.AsyncClient()
-
-
 async def get_posts_from_endpoint(
     endpoint: str, retry: bool = True
 ) -> List[Post | Comment]:
-    headers = {"user-agent": "my-subreddits-bot-0.1"}
+    bearer = get_token(hour=(time.time() // 7200))
+    headers = {
+        "user-agent": "my-subreddits-bot-0.1",
+        "Authorization": f"Bearer {bearer}",
+    }
     r_json = None
     response = None
     try:
-        response = await CLIENT_SESSION.get(
+        response = httpx.get(
             endpoint, headers=headers, timeout=60, follow_redirects=True
         )
+        time.sleep(0.5)
+        await asyncio.sleep(0.1)
         r_json = response.json()
         if not isinstance(r_json, dict):
             raise InvalidAnswerFromEndpoint()
     except Exception as e:
+        import random
         if retry:
             logging.info(f"{e!r} sleeping 60 seconds before retrying contacting reddit")
-            await asyncio.sleep(60)
+            time.sleep(2)
+            await asyncio.sleep(90 + random.random() * 60)
             return await get_posts_from_endpoint(endpoint, retry=False)
+        time.sleep(2)
+        await asyncio.sleep(120 + random.random() * 60)
         raise InvalidAnswerFromEndpoint(f"{endpoint} returned invalid json {response}")
     if "data" in r_json:
         children: Any = r_json["data"]["children"]
@@ -200,7 +227,7 @@ async def get_posts_from_endpoint(
     raise Exception(f"{r_json} on {endpoint}")
 
 
-BASE_URL = "https://www.reddit.com"
+BASE_URL = "https://oauth.reddit.com"
 
 
 def is_subreddit(subscription: str) -> bool:
@@ -215,6 +242,8 @@ async def hot_posts(subscription: str, limit: int = 30) -> List[Post | Comment]:
 
 
 async def new_posts(subscription: str, limit: int = 30) -> List[Post | Comment]:
+    if limit < 1:
+        return []
     endpoint = f"{BASE_URL}/{subscription}/new.json?limit={limit}"
     return await get_posts_from_endpoint(endpoint)
 
@@ -222,6 +251,8 @@ async def new_posts(subscription: str, limit: int = 30) -> List[Post | Comment]:
 async def get_top_posts(
     subscription: str, time_period: str, limit: int
 ) -> List[Post | Comment]:
+    if limit < 1:
+        return []
     if is_subreddit(subscription):
         endpoint = f"{BASE_URL}/{subscription}/top.json?t={time_period}&limit={limit}"
     else:
@@ -274,12 +305,20 @@ def valid_subscription(text: str) -> bool:
     return bool(subreddit_rx.fullmatch(text) or user_rx.fullmatch(text))
 
 
+# Not endorsing, people just bothered me about these
+allowed_subs = {"r/darkjokes", "r/modafinil"}
+
+
 async def get_posts_error(sub: str, monthly_rank: int) -> Optional[str]:
     if not valid_subscription(sub):
         return f"{sub} is not a valid subreddit or user name"
     try:
         posts = await get_posts(sub, monthly_rank)
-        if posts and sum(post["over_18"] for post in posts) / len(posts) >= 0.8:
+        if (
+            posts
+            and sum(post["over_18"] for post in posts) / len(posts) >= 0.8
+            and (sub not in allowed_subs)
+        ):
             return f"{sub} seems to be a porn subreddit, if that's not the case contact @recursing"
         if not posts:
             return f"{sub} does not exist or is empty or something"

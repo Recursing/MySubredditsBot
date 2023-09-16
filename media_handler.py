@@ -93,7 +93,6 @@ async def get_reddit_mp4_url(reddit_url: str) -> Optional[str]:
 
 video_scrapers = {
     "gfycat.com": get_gfycat_mp4_url,
-    "v.redd.it": get_reddit_mp4_url,
     "/streamable.com": get_streamable_mp4_url,
 }
 
@@ -129,10 +128,13 @@ def is_gallery(post: Post) -> bool:
 
 
 def get_gallery_image_urls(gallery: Gallery) -> List[str]:
-    image_ids = [item["media_id"] for item in gallery["gallery_data"]["items"]]
+    gallery_data = gallery.get("gallery_data")
+    if not gallery_data:
+        return []
+    image_ids = [item["media_id"] for item in gallery_data.get("items", [])]
 
     def get_url(media_id: str) -> str | None:
-        media_info = gallery.get("media_metadata", {}).get(media_id)
+        media_info = (gallery.get("media_metadata") or {}).get(media_id)
         if not media_info:
             return None
         full_size = media_info.get("s")
@@ -160,7 +162,9 @@ async def send_gallery(bot: Bot, chat_id: int, post: Post, caption: str) -> None
     gallery: Gallery = post  # type:ignore
     image_urls = get_gallery_image_urls(gallery)
     if not image_urls:
-        raise ValueError(f"Cannot get image urls from {post}")
+        logging.error(f"Cannot get image urls from {post}")
+        await bot.send_message(chat_id, caption, parse_mode="HTML")
+        return
     if len(image_urls) == 1:
         await bot.send_photo(chat_id, image_urls[0], caption=caption, parse_mode="HTML")
         return
@@ -170,7 +174,11 @@ async def send_gallery(bot: Bot, chat_id: int, post: Post, caption: str) -> None
     media_group = [InputMediaPhoto(first_image_url, caption=caption, parse_mode="HTML")]
     media_group.extend([InputMediaPhoto(url) for url in image_urls])
 
-    await bot.send_media_group(chat_id=chat_id, media=media_group)
+    try:
+        await bot.send_media_group(chat_id=chat_id, media=media_group)
+    except exceptions.BadRequest as e:
+        logging.error(f"Error {e!r} sending gallery for {post}")
+        await bot.send_message(chat_id, caption, parse_mode="HTML")
 
 
 async def send_image(bot: Bot, chat_id: int, post: Post, caption: str) -> None:
@@ -179,9 +187,13 @@ async def send_image(bot: Bot, chat_id: int, post: Post, caption: str) -> None:
     resolutions = preview_images and preview_images[0].get("resolutions")
     if resolutions:
         image_url = html.unescape(resolutions[-1]["url"])
-    await bot.send_photo(
-        chat_id=chat_id, photo=image_url, caption=caption, parse_mode="HTML"
-    )
+    try:
+        await bot.send_photo(
+            chat_id=chat_id, photo=image_url, caption=caption, parse_mode="HTML"
+        )
+    except exceptions.BadRequest as e:
+        logging.error(f"Error {e!r} sending photo for {post}")
+        await bot.send_message(chat_id, caption, parse_mode="HTML")
 
 
 async def send_video(bot: Bot, chat_id: int, post: Post, caption: str) -> None:

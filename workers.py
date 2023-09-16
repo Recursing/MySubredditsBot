@@ -75,6 +75,7 @@ async def make_worker(
     while True:
         t0 = time.monotonic()
         await send_subscription_update(subreddit, chat_id, per_month)
+        logging.info(f"Sent {subreddit=} {chat_id=} {per_month=}")
         elapsed = time.monotonic() - t0
         await asyncio.sleep(period - elapsed)
         elapsed = time.monotonic() - t0
@@ -83,7 +84,7 @@ async def make_worker(
         )
 
 
-workers: Dict[Tuple[int, str], asyncio.Task[Any]] = {}
+workers: Dict[Tuple[int, str], asyncio.Task] = {}
 
 
 def stop_worker(chat_id: int, subreddit: str):
