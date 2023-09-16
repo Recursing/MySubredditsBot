@@ -71,26 +71,6 @@ async def get_gfycat_mp4_url(gfycat_url: str) -> Optional[str]:
         return None
 
 
-async def get_reddit_mp4_url(reddit_url: str) -> Optional[str]:
-    reddit_qualities = [
-        "DASH_600_K",
-        "DASH_1_2_M",
-        "DASH_2_4_M",
-        "DASH_4_8_M",
-        "DASH_480",
-        "DASH_360",
-        "DASH_720",
-        "DASH_240",
-        "DASH_9_6_M",
-        "DASH_1080",
-    ]
-    url = reddit_url.rstrip("/")
-    # TODO get video size
-    r = await GET(f"{url}/DASHPlaylist.mpd")
-    quality = next((q for q in reddit_qualities if q in r.text), "DASH_480")
-    return f"{url}/{quality}.mp4?source=fallback"
-
-
 video_scrapers = {
     "gfycat.com": get_gfycat_mp4_url,
     "/streamable.com": get_streamable_mp4_url,

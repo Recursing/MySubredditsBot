@@ -51,7 +51,17 @@ def catch_telegram_exceptions(
     async def wrap(*args, **kwargs) -> bool:
         try:
             return await func(*args, **kwargs)
-        except (exceptions.Unauthorized, exceptions.ChatNotFound, exceptions.BadRequest) as e:
+        except exceptions.InlineKeyboardExpected as e:
+            if "reply_markup" in kwargs:
+                del kwargs["reply_markup"]
+                await func(*args, **kwargs)
+            else:
+                raise e
+        except (
+            exceptions.Unauthorized,
+            exceptions.ChatNotFound,
+            exceptions.BadRequest,
+        ) as e:
             chat_id = kwargs.get("chat_id") or args[0]
             unsub_reasons = [
                 "chat not found",
@@ -69,12 +79,6 @@ def catch_telegram_exceptions(
                 subscriptions_manager.delete_user(chat_id)
             else:
                 await send_exception(e, f"Failed to send {args} {kwargs}")
-        except exceptions.InlineKeyboardExpected as e:
-            if "reply_markup" in kwargs:
-                del kwargs["reply_markup"]
-                await send_message(*args, **kwargs)
-            else:
-                raise e
         except exceptions.MigrateToChat as e:
             new_chat_id = e.migrate_to_chat_id
             old_chat_id = kwargs.get("chat_id") or args[0]
@@ -95,7 +99,7 @@ def catch_telegram_exceptions(
         ) as e:
             await send_exception(e, f"TelegramApiError {args} {kwargs}")
             logging.error(f"{e!r} Telegram error, sleeping")
-            time.sleep(60) # Telegram maybe down, sleep a while
+            time.sleep(60)  # Telegram maybe down, sleep a while
         return False
 
     return wrap

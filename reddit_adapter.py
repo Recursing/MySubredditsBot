@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-import asyncio
-import itertools
 import logging
 import re
+import time
 import urllib.parse
 from datetime import datetime
-from typing import Any, Coroutine, Dict, List, Literal, Optional, Set, TypedDict
 from functools import lru_cache
-import time
+from typing import Any, Dict, List, Literal, Optional, Set, TypedDict
 
 import httpx
 
@@ -21,7 +19,7 @@ from credentials import (
 
 
 @lru_cache(maxsize=2)
-def get_token(_hour):
+def get_token(hour):
     url = "https://www.reddit.com/api/v1/access_token"
     data = {
         "grant_type": "password",
@@ -185,9 +183,11 @@ class InvalidAnswerFromEndpoint(Exception):
     pass
 
 
-async def get_posts_from_endpoint(
-    endpoint: str, retry: bool = True
-) -> List[Post | Comment]:
+last_get_time = 0
+
+
+def get_posts_from_endpoint(endpoint: str, retry: bool = True) -> List[Post | Comment]:
+    global last_get_time
     bearer = get_token(hour=(time.time() // 7200))
     headers = {
         "user-agent": "my-subreddits-bot-0.1",
@@ -195,24 +195,23 @@ async def get_posts_from_endpoint(
     }
     r_json = None
     response = None
+    if (time.time() - last_get_time) < 1:
+        # Max one request per second, or reddit gets mad
+        time.sleep(1 - (time.time() - last_get_time))
     try:
+        last_get_time = time.time()
         response = httpx.get(
-            endpoint, headers=headers, timeout=60, follow_redirects=True
+            endpoint, headers=headers, timeout=120, follow_redirects=True
         )
-        time.sleep(0.5)
-        await asyncio.sleep(0.1)
         r_json = response.json()
         if not isinstance(r_json, dict):
             raise InvalidAnswerFromEndpoint()
     except Exception as e:
-        import random
         if retry:
-            logging.info(f"{e!r} sleeping 60 seconds before retrying contacting reddit")
-            time.sleep(2)
-            await asyncio.sleep(90 + random.random() * 60)
-            return await get_posts_from_endpoint(endpoint, retry=False)
-        time.sleep(2)
-        await asyncio.sleep(120 + random.random() * 60)
+            logging.info(f"{e!r} sleeping 10 seconds before retrying contacting reddit")
+            time.sleep(10)
+            return get_posts_from_endpoint(endpoint, retry=False)
+        time.sleep(30)
         raise InvalidAnswerFromEndpoint(f"{endpoint} returned invalid json {response}")
     if "data" in r_json:
         children: Any = r_json["data"]["children"]
@@ -236,23 +235,31 @@ def is_subreddit(subscription: str) -> bool:
     return subscription.startswith("r/")
 
 
-async def hot_posts(subscription: str, limit: int = 30) -> List[Post | Comment]:
-    endpoint = f"{BASE_URL}/{subscription}/hot.json?limit={limit}"
-    return await get_posts_from_endpoint(endpoint)
-
-
-async def new_posts(subscription: str, limit: int = 30) -> List[Post | Comment]:
+def hot_posts(subscription: str, limit: int = 30) -> List[Post | Comment]:
     if limit < 1:
         return []
+    if limit > 99:
+        limit = 99
+    endpoint = f"{BASE_URL}/{subscription}/hot.json?limit={limit}"
+    return get_posts_from_endpoint(endpoint)
+
+
+def new_posts(subscription: str, limit: int = 30) -> List[Post | Comment]:
+    if limit < 1:
+        return []
+    if limit > 99:
+        limit = 99
     endpoint = f"{BASE_URL}/{subscription}/new.json?limit={limit}"
-    return await get_posts_from_endpoint(endpoint)
+    return get_posts_from_endpoint(endpoint)
 
 
-async def get_top_posts(
+def get_top_posts(
     subscription: str, time_period: str, limit: int
 ) -> List[Post | Comment]:
     if limit < 1:
         return []
+    if limit > 99:
+        limit = 99
     if is_subreddit(subscription):
         endpoint = f"{BASE_URL}/{subscription}/top.json?t={time_period}&limit={limit}"
     else:
@@ -260,25 +267,18 @@ async def get_top_posts(
         endpoint = (
             f"{BASE_URL}/{subscription}.json?sort=top&t={time_period}&limit={limit}"
         )
-    return await get_posts_from_endpoint(endpoint)
+    return get_posts_from_endpoint(endpoint)
 
 
-async def get_posts(subscription: str, per_month: int) -> List[Post | Comment]:
-    tasks: List[Coroutine[Any, Any, List[Post | Comment]]] = []
-    if per_month < 99:
-        tasks.append(get_top_posts(subscription, "month", per_month))
-    if per_month // 4 < 99:
-        limit = per_month // 4
-        tasks.append(get_top_posts(subscription, "week", limit))
-    if per_month // 31 < 99:
-        limit = per_month // 31
-        tasks.append(get_top_posts(subscription, "day", limit))
+def get_posts(subscription: str, per_month: int) -> List[Post | Comment]:
+    posts: List[Post | Comment] = []
+    posts.extend(get_top_posts(subscription, "month", per_month))
+    if 0 < per_month // 4 < 99:
+        posts.extend(get_top_posts(subscription, "week", limit=per_month // 2))
+    if 0 < per_month // 31 < 99:
+        posts.extend(get_top_posts(subscription, "day", limit=per_month // 15))
     if is_subreddit(subscription):
-        tasks.append(hot_posts(subscription, min(per_month // 10, 99)))
-
-    posts: List[Post | Comment] = list(
-        itertools.chain.from_iterable(await asyncio.gather(*tasks))
-    )
+        posts.extend(hot_posts(subscription, per_month // 2))
 
     def get_score(post: Post | Comment):
         return post["score"]
@@ -309,11 +309,11 @@ def valid_subscription(text: str) -> bool:
 allowed_subs = {"r/darkjokes", "r/modafinil"}
 
 
-async def get_posts_error(sub: str, monthly_rank: int) -> Optional[str]:
+def get_posts_error(sub: str, monthly_rank: int) -> Optional[str]:
     if not valid_subscription(sub):
         return f"{sub} is not a valid subreddit or user name"
     try:
-        posts = await get_posts(sub, monthly_rank)
+        posts = get_posts(sub, monthly_rank)
         if (
             posts
             and sum(post["over_18"] for post in posts) / len(posts) >= 0.8

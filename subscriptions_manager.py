@@ -3,8 +3,6 @@ import sqlite3
 from datetime import datetime
 from typing import Any, List, Optional, Tuple, Union
 
-import workers
-
 logger = logging.getLogger(__name__)
 
 
@@ -33,29 +31,61 @@ def exec_sql(query: str, parameters: Tuple[Union[str, int], ...] = ()) -> None:
 
 def create_tables():
     exec_sql(
-        """CREATE TABLE IF NOT EXISTS subscriptions (
+        """
+        CREATE TABLE IF NOT EXISTS subscriptions(
             chat_id INTEGER NOT NULL,
             subreddit TEXT NOT NULL CHECK(subreddit LIKE "r/%" OR subreddit LIKE "u/%"),
             per_month INTEGER NOT NULL,
+            "timestamp" DATETIME,
             PRIMARY KEY (chat_id, subreddit)
-        );"""
+        );
+        """
     )
     exec_sql(
-        """CREATE TABLE IF NOT EXISTS messages (
-            chat_id INTEGER NOT NULL,
-            post_id TEXT NOT NULL,
-            Timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-            subreddit TEXT,
-            PRIMARY KEY (chat_id, post_id)
-        );"""
-    )
-    exec_sql(
-        """CREATE TABLE IF NOT EXISTS exceptions (
+        """
+        CREATE TABLE IF NOT EXISTS exceptions (
             subreddit TEXT NOT NULL,
             reason TEXT NOT NULL,
             chat_id INTEGER NOT NULL,
             PRIMARY KEY (chat_id, subreddit, reason)
-        );"""
+        );
+        """
+    )
+    exec_sql(
+        """
+        CREATE TABLE IF NOT EXISTS messages (
+            chat_id INTEGER NOT NULL,
+            post_id TEXT NOT NULL,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            subreddit TEXT,
+            PRIMARY KEY (chat_id, post_id)
+        );
+        """
+    )
+    exec_sql(
+        """
+        CREATE TRIGGER IF NOT EXISTS insert_Timestamp_Trigger
+        AFTER INSERT ON subscriptions
+        BEGIN
+            UPDATE subscriptions SET timestamp = CURRENT_TIMESTAMP
+            WHERE chat_id = NEW.chat_id AND subreddit = NEW.subreddit;
+        END;
+        """
+    )
+    exec_sql(
+        """
+        CREATE INDEX IF NOT EXISTS messages_timestamp_idx ON messages(timestamp);
+        """
+    )
+    exec_sql(
+        """
+        CREATE INDEX IF NOT EXISTS messages_chat_id_post_id_idx ON messages(chat_id, post_id);
+        """
+    )
+    exec_sql(
+        """
+        CREATE INDEX IF NOT EXISTS messages_chat_id_subreddit_timestamp_idx ON messages(chat_id, subreddit, timestamp);
+        """
     )
 
 
@@ -76,7 +106,6 @@ def subscribe(chat_id: int, subreddit: str, monthly_rank: int) -> bool:
         "INSERT INTO subscriptions (chat_id, subreddit, per_month) VALUES (?,?,?)",
         (chat_id, subreddit, monthly_rank),
     )
-    workers.start_worker(chat_id, subreddit, monthly_rank)
     return True
 
 
@@ -98,7 +127,6 @@ def unsubscribe(chat_id: int, subreddit: str) -> bool:
         "DELETE FROM subscriptions WHERE chat_id=? AND subreddit=?",
         (chat_id, subreddit),
     )
-    workers.stop_worker(chat_id, subreddit)
     return True
 
 
@@ -107,7 +135,6 @@ def update_per_month(chat_id: int, subreddit: str, new_monthly_rank: int):
         "UPDATE subscriptions SET per_month=? " " WHERE chat_id=? AND subreddit=?",
         (new_monthly_rank, chat_id, subreddit),
     )
-    workers.start_worker(chat_id, subreddit, new_monthly_rank)
 
 
 def get_subscriptions() -> List[Tuple[int, str, int]]:
@@ -206,3 +233,33 @@ def unavailable_subreddits() -> List[str]:
 def delete_user(chat_id: int):
     for sub in user_subreddits(chat_id):
         unsubscribe(chat_id, sub)
+
+
+def get_next_subscription_to_update() -> Tuple[str, int, int]:
+    subreddit, chat_id, per_month, _priority = exec_select(
+        """SELECT
+  subscriptions.subreddit, subscriptions.chat_id, subscriptions.per_month,
+  (
+    (31.0 * 24.0 * 3600.0 / per_month) -
+    (
+        CAST(strftime('%s', CURRENT_TIMESTAMP) as integer) -
+        COALESCE(
+            CAST(strftime('%s', t.last_message_timestamp) as integer),
+            0.0)
+    )
+  ) as priority
+FROM subscriptions LEFT JOIN (
+   SELECT chat_id, subreddit,
+      COALESCE(max(timestamp), 0) as last_message_timestamp
+    FROM messages
+    GROUP BY chat_id, subreddit
+    ORDER BY last_message_timestamp ASC
+  ) t ON (
+    t.chat_id = subscriptions.chat_id
+    AND t.subreddit = subscriptions.subreddit
+  )
+ORDER BY priority ASC
+LIMIT 1;
+"""
+    )[0]
+    return subreddit, chat_id, per_month

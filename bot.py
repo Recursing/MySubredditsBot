@@ -77,7 +77,7 @@ def _normalize_sub(sub: str) -> str:
 async def add_subscription(chat_id: int, sub: str) -> bool:
     monthly_rank = 31
     sub = _normalize_sub(sub)
-    error = await reddit_adapter.get_posts_error(sub, monthly_rank)
+    error = reddit_adapter.get_posts_error(sub, monthly_rank)
     if error:
         await send_message(chat_id, error)
     if not subscriptions_manager.subscribe(chat_id, sub, monthly_rank):
@@ -97,7 +97,7 @@ async def add_subscriptions(chat_id: int, subs: List[str]):
         if subscriptions_manager.is_subscribed(chat_id, sub):
             await send_message(chat_id, f"You are already subscribed to {sub}")
             return
-        err = await reddit_adapter.get_posts_error(sub, 31)
+        err = reddit_adapter.get_posts_error(sub, 31)
         if err:
             await send_message(chat_id, err)
             return
@@ -267,7 +267,7 @@ async def change_threshold(
     if new_monthly < 1:
         await send_message(chat_id=chat_id, text="Press /remove to unsubscribe")
         return
-    err = await reddit_adapter.get_posts_error(sub, new_monthly)
+    err = reddit_adapter.get_posts_error(sub, new_monthly)
     if err:
         await send_message(chat_id=chat_id, text=err)
         return
