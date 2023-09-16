@@ -151,7 +151,7 @@ async def send_gallery(bot: Bot, chat_id: int, post: Post, caption: str) -> None
     if len(image_urls) > 10:
         image_urls = image_urls[:10]
     first_image_url, *image_urls = image_urls
-    media_group = [InputMediaPhoto(first_image_url, caption=caption, parse_mode="HTML")]
+    media_group = [InputMediaPhoto(first_image_url, caption=caption[:1000], parse_mode="HTML")]
     media_group.extend([InputMediaPhoto(url) for url in image_urls])
 
     try:
@@ -169,7 +169,7 @@ async def send_image(bot: Bot, chat_id: int, post: Post, caption: str) -> None:
         image_url = html.unescape(resolutions[-1]["url"])
     try:
         await bot.send_photo(
-            chat_id=chat_id, photo=image_url, caption=caption, parse_mode="HTML"
+            chat_id=chat_id, photo=image_url, caption=caption[:1000], parse_mode="HTML"
         )
     except exceptions.BadRequest as e:
         logging.error(f"Error {e!r} sending photo for {post}")
