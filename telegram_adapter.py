@@ -87,7 +87,7 @@ def catch_telegram_exceptions(
                 subscriptions_manager.unsubscribe(old_chat_id, sub)
         except exceptions.RetryAfter as e:
             time_to_sleep = e.timeout + 1
-            logging.error(f"{e!r} RetryAfter error, sleeping")
+            logging.error(f"{e!r} RetryAfter error, sleeping {time_to_sleep=}")
             time.sleep(time_to_sleep)
         except exceptions.NetworkError as e:
             logging.error(f"{e!r} network error, sleeping")

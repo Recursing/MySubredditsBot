@@ -87,14 +87,20 @@ async def check_exceptions(refresh_period: int = 48 * 60 * 60):
                 )
         await asyncio.sleep(refresh_period)
 
-
-async def on_startup(_dispatcher: Any):
-    asyncio.create_task(check_exceptions())
+async def send_updates():
     while True:
         (
             subreddit,
             chat_id,
             per_month,
+            time_left
         ) = subscriptions_manager.get_next_subscription_to_update()
+        logging.info(f"Sending {subreddit=} to {chat_id=} {per_month=} {time_left=}")
+        await asyncio.sleep(max(0.01, time_left))
         logging.info(f"Sending {subreddit=} to {chat_id=} {per_month=}")
         await send_subscription_update(subreddit, chat_id, per_month)
+
+tasks = []
+async def on_startup(_dispatcher: Any):
+    tasks.append(asyncio.create_task(check_exceptions()))
+    tasks.append(asyncio.create_task(send_updates()))

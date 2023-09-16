@@ -235,8 +235,8 @@ def delete_user(chat_id: int):
         unsubscribe(chat_id, sub)
 
 
-def get_next_subscription_to_update() -> Tuple[str, int, int]:
-    subreddit, chat_id, per_month, _priority = exec_select(
+def get_next_subscription_to_update() -> Tuple[str, int, int, float]:
+    subreddit, chat_id, per_month, time_left = exec_select(
         """SELECT
   subscriptions.subreddit, subscriptions.chat_id, subscriptions.per_month,
   (
@@ -262,4 +262,4 @@ ORDER BY priority ASC
 LIMIT 1;
 """
     )[0]
-    return subreddit, chat_id, per_month
+    return subreddit, chat_id, per_month, time_left
